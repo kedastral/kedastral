@@ -96,7 +96,6 @@ func main() {
 	policy := &capacity.Policy{
 		TargetPerPod:          cfg.TargetPerPod,
 		Headroom:              cfg.Headroom,
-		LeadTimeSeconds:       int(cfg.LeadTime.Seconds()),
 		MinReplicas:           cfg.MinReplicas,
 		MaxReplicas:           cfg.MaxReplicas,
 		UpMaxFactorPerStep:    cfg.UpMaxFactorPerStep,

@@ -208,9 +208,6 @@ func TestConfig_Defaults(t *testing.T) {
 	if cfg.Step != 1*time.Minute {
 		t.Errorf("Step = %v, want 1m", cfg.Step)
 	}
-	if cfg.LeadTime != 5*time.Minute {
-		t.Errorf("LeadTime = %v, want 5m", cfg.LeadTime)
-	}
 	if cfg.TargetPerPod != 100.0 {
 		t.Errorf("TargetPerPod = %f, want 100.0", cfg.TargetPerPod)
 	}
@@ -249,7 +246,6 @@ func TestConfig_CustomValues(t *testing.T) {
 		"-listen=:9090",
 		"-horizon=1h",
 		"-step=5m",
-		"-lead-time=10m",
 		"-target-per-pod=200",
 		"-headroom=1.5",
 		"-min=2",

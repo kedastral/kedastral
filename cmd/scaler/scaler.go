@@ -184,7 +184,7 @@ func (s *Scaler) GetMetrics(ctx context.Context, req *pb.GetMetricsRequest) (*pb
 
 	s.logger.Info("returning desired replicas",
 		"workload", workload,
-		"replicas", desiredReplicas,
+		"desired", desiredReplicas,
 		"forecast_age", time.Since(snapshot.GeneratedAt),
 	)
 
@@ -250,7 +250,8 @@ func (s *Scaler) getForecast(ctx context.Context, workload string) (*storage.Sna
 	return &snapshot, nil
 }
 
-// selectReplicasAtLeadTime selects the appropriate replica count based on lead time
+// selectReplicasAtLeadTime returns the maximum replica count over the window [now...now+leadTime].
+// This ensures we scale up proactively for upcoming spikes while staying scaled during current load.
 func (s *Scaler) selectReplicasAtLeadTime(snapshot *storage.Snapshot) int {
 	if len(snapshot.DesiredReplicas) == 0 {
 		s.logger.Warn("no desired replicas in forecast, defaulting to 1")
@@ -267,16 +268,21 @@ func (s *Scaler) selectReplicasAtLeadTime(snapshot *storage.Snapshot) int {
 		leadSteps = 0
 	}
 
-	replicas := snapshot.DesiredReplicas[leadSteps]
+	maxReplicas := snapshot.DesiredReplicas[0]
+	for i := 1; i <= leadSteps && i < len(snapshot.DesiredReplicas); i++ {
+		if snapshot.DesiredReplicas[i] > maxReplicas {
+			maxReplicas = snapshot.DesiredReplicas[i]
+		}
+	}
 
-	s.logger.Debug("selected replicas at lead time",
+	s.logger.Debug("selected max replicas over lead time window",
 		"lead_time", s.leadTime,
 		"step_seconds", snapshot.StepSeconds,
 		"lead_steps", leadSteps,
-		"replicas", replicas,
+		"max_replicas", maxReplicas,
 	)
 
-	return replicas
+	return maxReplicas
 }
 
 // getWorkload extracts the workload name from scaler metadata

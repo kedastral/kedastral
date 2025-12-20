@@ -78,13 +78,13 @@ func New(
 // Run executes the forecast loop at regular intervals.
 // Blocks until context is canceled.
 func (f *Forecaster) Run(ctx context.Context, interval time.Duration) error {
-	f.logger.Info("starting forecast loop", "interval", interval)
+	f.logger.Info("starting forecast loop", "interval", interval, "window", f.window)
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	if err := f.Tick(ctx); err != nil {
-		f.logger.Error("forecast tick failed", "error", err)
+		f.logger.Error("initial forecast tick failed", "error", err)
 	}
 
 	for {
@@ -149,6 +149,10 @@ func (f *Forecaster) Tick(ctx context.Context) error {
 	if f.metrics != nil {
 		f.metrics.SetForecastAge(0) // Just generated
 		f.metrics.SetDesiredReplicas(f.currentReplicas)
+		// Set the current predicted value (first forecast point)
+		if len(forecast.Values) > 0 {
+			f.metrics.SetPredictedValue(forecast.Values[0])
+		}
 	}
 
 	totalDuration := time.Since(start)
@@ -181,9 +185,10 @@ func (f *Forecaster) collect(ctx context.Context) (*adapters.DataFrame, time.Dur
 		f.metrics.RecordCollect(duration.Seconds())
 	}
 
-	f.logger.Debug("collected metrics",
+	f.logger.Info("collected metrics",
 		"adapter", f.adapter.Name(),
 		"rows", len(df.Rows),
+		"window_seconds", int(f.window.Seconds()),
 		"duration_ms", duration.Milliseconds(),
 	)
 

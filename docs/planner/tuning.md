@@ -12,13 +12,14 @@ Use these until real data suggests otherwise:
 |---|---:|---|
 | `TargetPerPod` | workload-specific | Throughput each pod sustains at SLO (measure!) |
 | `Headroom` | `1.2` | 20% buffer for forecast error and jitter |
-| `LeadTimeSeconds` | `60–120` | Pre-warm 1–2 steps ahead |
-| `PrewarmWindowSteps` | `0` | Conservative, predictable pre-scaling |
+| `PrewarmWindowSteps` | `0` | Conservative, predictable capacity calculation |
 | `RoundingMode` | `ceil` | Bias against under-provisioning |
 | `UpMaxFactorPerStep` | `1.5–2.0` | Avoid cold-start stampedes |
 | `DownMaxPercentPerStep` | `25–50` | Avoid cache flush / thrash |
 | `MinReplicas` | `≥ 2` | Keep warm pool, reduce cold starts |
 | `MaxReplicas` | workload-specific | Cost guardrail & dependency protection |
+
+**Note:** Lead-time is configured on the **scaler** (not the forecaster). See scaler configuration for `--lead-time` setting.
 
 Keep **reactive** KEDA triggers (e.g., CPU/RPS) enabled: KEDA takes the **max** across triggers, giving you a safe fallback.
 
@@ -51,23 +52,35 @@ Safety multiplier applied before rounding. Absorbs forecast error, GC spikes, an
 
 ---
 
-### `LeadTimeSeconds` (default `60–120`)
-How far ahead to scale. Compensates for pod startup time (image pull, JIT, warming caches).
-
-- If pods take 45s to become effective → choose 60–120s lead.
-- Increase if you still see cold-start penalties.
-- Decrease if you consistently scale too early.
-
-**Tip:** Prefer adjusting **lead time** before using a prewarm window.
-
----
-
 ### `PrewarmWindowSteps` (default `0`)
-When > 0, planner takes the **max** over `[i+lead .. i+lead+window]`. This aggressively pulls upcoming spikes forward.
+When > 0, capacity planner takes the **max** over `[i .. i+window]` for each forecast position. This can help catch upcoming spikes within the forecast window.
 
 - Keep `0` for most services (predictable behavior).
 - Use `1` only for **known, sharp, fixed-time bursts** (e.g., live event starts).
 - Document when enabled; it can surprise operators.
+
+---
+
+## Scaler Configuration
+
+### `--lead-time` (scaler flag, default `5m`)
+**Note:** This is configured on the **scaler**, not the forecaster.
+
+How far ahead the scaler looks in the forecast for proactive scaling. Compensates for pod startup time (image pull, JIT, warming caches).
+
+- If pods take 45s to become effective → choose `5m-10m` lead-time
+- Increase if you still see cold-start penalties
+- Decrease if you consistently scale too early
+
+**How it works:**
+1. Scaler takes MAX over DesiredReplicas[0...leadSteps] from forecast
+2. Returns this value to KEDA
+3. KEDA takes MAX across ALL scalers (predictive + reactive triggers)
+
+**Scaling behavior:**
+- **Scale-up:** Proactive (scales 10min before predicted spike via lead-time window MAX)
+- **Scale-down:** Gradual (limited by DownMaxPercentPerStep clamps)
+- **Safety:** Reactive triggers (CPU/RPS) act as fallback when predictions are wrong
 
 ---
 

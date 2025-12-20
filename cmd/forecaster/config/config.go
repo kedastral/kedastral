@@ -4,7 +4,7 @@
 // precedence over environment variables. The Config struct contains all runtime
 // configuration for the forecaster including:
 //   - Workload identification (workload name, metric name)
-//   - Forecast parameters (horizon, step, lead time)
+//   - Forecast parameters (horizon, step)
 //   - Capacity planning policy (target per pod, headroom, min/max replicas)
 //   - Prometheus adapter settings (URL, query)
 //   - Timing configuration (interval, window)
@@ -38,7 +38,6 @@ type Config struct {
 	Metric                string
 	Horizon               time.Duration
 	Step                  time.Duration
-	LeadTime              time.Duration
 	TargetPerPod          float64
 	Headroom              float64
 	MinReplicas           int
@@ -78,7 +77,6 @@ func ParseFlags() *Config {
 	// Forecast parameters
 	flag.DurationVar(&cfg.Horizon, "horizon", getEnvDuration("HORIZON", 30*time.Minute), "Forecast horizon")
 	flag.DurationVar(&cfg.Step, "step", getEnvDuration("STEP", 1*time.Minute), "Forecast step size")
-	flag.DurationVar(&cfg.LeadTime, "lead-time", getEnvDuration("LEAD_TIME", 5*time.Minute), "Lead time for pre-scaling")
 
 	// Capacity policy
 	flag.Float64Var(&cfg.TargetPerPod, "target-per-pod", getEnvFloat("TARGET_PER_POD", 100.0), "Target metric value per pod")

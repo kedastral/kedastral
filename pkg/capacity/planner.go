@@ -1,5 +1,5 @@
 // Package capacity converts forecasted load into desired replica counts
-// using a deterministic policy (target per pod, headroom, lead time, clamps).
+// using a deterministic policy (target per pod, headroom, clamps).
 package capacity
 
 import (
@@ -16,9 +16,6 @@ type Policy struct {
 	// Must be >= 1.0
 	Headroom float64
 
-	// LeadTimeSeconds pre-warms capacity this many seconds before the predicted need.
-	LeadTimeSeconds int
-
 	// Min/Max replica bounds. MaxReplicas == 0 means "no upper bound".
 	MinReplicas int
 	MaxReplicas int
@@ -31,9 +28,8 @@ type Policy struct {
 	// Example: 50 means we can drop at most 50% from the previous step. Clamped to [0,100].
 	DownMaxPercentPerStep int
 
-	// PrewarmWindowSteps defines how many *extra* steps beyond the lead index to consider.
-	// 0 = single point at i+i0 (conservative). N>0 = max over [i+i0 .. i+i0+N] (aggressive).
-	// v0.1 default should be 0 for predictable behavior.
+	// PrewarmWindowSteps defines how many steps ahead to consider when computing replicas.
+	// 0 = single point at i (conservative). N>0 = max over [i .. i+N] (aggressive).
 	PrewarmWindowSteps int
 
 	// RoundingMode controls how fractional pods are turned into integers.
@@ -49,7 +45,6 @@ func ToReplicas(prev int, forecast []float64, stepSec int, p Policy) []int {
 	if len(forecast) == 0 {
 		return nil
 	}
-	// ---- sanitize policy ----
 	if p.TargetPerPod <= 0 {
 		p.TargetPerPod = 1
 	}
@@ -77,7 +72,7 @@ func ToReplicas(prev int, forecast []float64, stepSec int, p Policy) []int {
 	if p.PrewarmWindowSteps < 0 {
 		p.PrewarmWindowSteps = 0
 	}
-	// ---- precompute adjusted capacity requirement per step (load -> pods before rounding) ----
+
 	adj := make([]float64, len(forecast))
 	for i, v := range forecast {
 		if v < 0 {
@@ -87,20 +82,12 @@ func ToReplicas(prev int, forecast []float64, stepSec int, p Policy) []int {
 		adj[i] = raw * p.Headroom
 	}
 
-	// lead time offset in steps
-	i0 := max(int(math.Ceil(float64(p.LeadTimeSeconds)/float64(stepSec))), 0)
-
 	res := make([]int, len(forecast))
 	prevOut := clampBounds(prev, p.MinReplicas, p.MaxReplicas)
 
 	for i := range forecast {
-		// Conservative pick: single point at i+i0.
-		// If PrewarmWindowSteps > 0, take the max over [jStart..jEnd].
-		jStart := i + i0
-		if jStart >= len(adj) {
-			jStart = len(adj) - 1
-		}
-		jEnd := jStart + p.PrewarmWindowSteps
+		jStart := i
+		jEnd := i + p.PrewarmWindowSteps
 		if jEnd >= len(adj) {
 			jEnd = len(adj) - 1
 		}

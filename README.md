@@ -51,11 +51,11 @@ Where **KEDA** reacts to what *has already happened*, **Kedastral** predicts *wh
 Kedastral supports two forecasting models, selectable via the `--model` flag:
 
 ### Baseline (Default)
-- **Algorithm**: Moving average (EMA 5m + 30m) + hour-of-day seasonality
-- **Training**: None required (stateless)
-- **Best for**: Stable workloads, development, quick start
-- **Pros**: Fast, simple, no training data needed
-- **Cons**: Limited accuracy for trending/seasonal data
+- **Algorithm**: Linear trend + momentum + multi-level seasonality (minute-of-hour + hour-of-day)
+- **Training**: Uses historical window to learn seasonal patterns (requires 2-3 pattern repetitions)
+- **Best for**: Workloads with recurring patterns (hourly/daily cycles)
+- **Pros**: Fast, adaptive blending of trend and seasonality, handles intra-hour and daily patterns
+- **Cons**: Needs 2-3 hours of data for optimal accuracy
 - **Configuration**: `--model=baseline` (default)
 
 ### ARIMA
@@ -120,7 +120,8 @@ Kedastral currently consists of **two main components**, both implemented in **G
 ### 1. **Forecaster** (`cmd/forecaster`)
 
 - Collects recent metrics from **Prometheus** using configurable queries
-- Uses a **baseline forecasting model** (statistical quantile-based prediction) to predict short-term load
+- **Warm-start capability**: On startup, queries Prometheus for full historical window (e.g., 3 hours) to immediately start with learned patterns
+- Uses a **baseline forecasting model** (trend + momentum + multi-level seasonality) to predict short-term load
 - Translates predicted load into **desired replica counts** using a configurable capacity policy
 - Stores forecasts in memory and exposes them via HTTP API (`/forecast/current`)
 - Exposes Prometheus metrics for monitoring (`/metrics`)
@@ -130,7 +131,10 @@ Kedastral currently consists of **two main components**, both implemented in **G
 
 - Implements the [KEDA External Scaler gRPC API](https://keda.sh/docs/latest/concepts/external-scalers/)
 - Periodically queries the Forecaster via HTTP to fetch the latest forecast
-- Selects appropriate replica count based on configured lead time
+- Selects appropriate replica count based on configured **lead time** (proactive scaling window)
+  - Default: 5 minutes (good for gradual changes)
+  - Recommended: 10-15 minutes for workloads with predictable spikes
+  - Takes MAX over the lead-time window for proactive scale-up
 - Returns **desired replicas** to KEDA via gRPC interface
 - Exposes health check and metrics endpoints
 
@@ -476,12 +480,27 @@ open http://localhost:6060/pkg/github.com/HatiCode/kedastral/
 
 ## 📊 Observability
 
-| Metric | Description |
-|---------|--------------|
-| `kedastral_predicted_value` | forecasted metric (e.g., RPS) |
-| `kedastral_desired_replicas` | computed replica count |
-| `kedastral_forecast_age_seconds` | staleness of forecast data |
-| `kedastral_underprovision_seconds_total` | safety metric for missed forecasts |
+### Forecaster Metrics
+
+| Metric | Type | Description |
+|---------|------|--------------|
+| `kedastral_predicted_value` | Gauge | Current predicted metric value (e.g., RPS) |
+| `kedastral_desired_replicas` | Gauge | Current desired replica count (without lead-time) |
+| `kedastral_forecast_age_seconds` | Gauge | Age of the current forecast in seconds |
+| `kedastral_adapter_collect_seconds` | Histogram | Time spent collecting metrics from adapter |
+| `kedastral_model_predict_seconds` | Histogram | Time spent predicting forecast |
+| `kedastral_capacity_compute_seconds` | Histogram | Time spent computing desired replicas |
+| `kedastral_errors_total` | Counter | Total errors by component and reason |
+
+### Scaler Metrics
+
+| Metric | Type | Description |
+|---------|------|--------------|
+| `kedastral_scaler_desired_replicas_returned` | Gauge | Last replica count returned to KEDA (with lead-time) |
+| `kedastral_scaler_forecast_age_seen_seconds` | Gauge | Age of forecast when scaler fetched it |
+| `kedastral_scaler_forecast_fetch_duration_seconds` | Histogram | Time spent fetching forecast from forecaster |
+| `kedastral_scaler_forecast_fetch_errors_total` | Counter | Total errors fetching forecasts |
+| `kedastral_scaler_grpc_request_duration_seconds` | Histogram | KEDA gRPC request duration by method |
 
 ---
 

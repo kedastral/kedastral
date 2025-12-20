@@ -59,13 +59,18 @@
           },
           {
             "expr": "kedastral_desired_replicas{workload=\"test-app\"}",
-            "legendFormat": "Desired Replicas",
+            "legendFormat": "Forecaster Prediction (current)",
             "refId": "B"
           },
           {
-            "expr": "kube_horizontalpodautoscaler_status_desired_replicas{horizontalpodautoscaler=~\"keda-hpa-.*\", namespace=\"test-app\"}",
-            "legendFormat": "HPA Target",
+            "expr": "kedastral_scaler_desired_replicas_returned",
+            "legendFormat": "Scaler Recommendation (proactive)",
             "refId": "C"
+          },
+          {
+            "expr": "kube_horizontalpodautoscaler_status_desired_replicas{horizontalpodautoscaler=~\"keda-hpa-.*\", namespace=\"test-app\"}",
+            "legendFormat": "HPA Target (KEDA)",
+            "refId": "D"
           }
         ],
         "yaxes": [

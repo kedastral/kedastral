@@ -71,7 +71,8 @@ echo "Waiting for Prometheus to be ready..."
 # First wait for the Prometheus pod to be created (can take time for operator to create it)
 echo "Waiting for Prometheus pod to be created..."
 for i in {1..60}; do
-    if kubectl get pod -l app.kubernetes.io/name=prometheus -n monitoring &>/dev/null; then
+    POD_COUNT=$(kubectl get pod -l app.kubernetes.io/name=prometheus -n monitoring --no-headers 2>/dev/null | wc -l)
+    if [ "$POD_COUNT" -gt 0 ]; then
         echo "Prometheus pod found, waiting for it to be ready..."
         break
     fi
@@ -90,7 +91,7 @@ echo ""
 echo "Building Kedastral Docker images..."
 cd ..
 echo "Building forecaster..."
-docker build -t kedastral-forecaster:latest -f Dockerfile.forecaster .
+docker build -t kedastral-forecaster:v2 -f Dockerfile.forecaster .
 echo "Building scaler..."
 docker build -t kedastral-scaler:latest -f Dockerfile.scaler .
 cd test-app

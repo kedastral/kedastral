@@ -25,7 +25,7 @@ spec:
           imagePullPolicy: Never # For local minikube images
           args:
             - -forecaster-url=http://kedastral-forecaster:8081
-            - -lead-time=5m
+            - -lead-time=15m
             - -listen=:50051
           ports:
             - containerPort: 50051

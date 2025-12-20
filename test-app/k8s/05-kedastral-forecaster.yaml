@@ -34,7 +34,6 @@ spec:
             - -max=20
             - -horizon=30m
             - -step=1m
-            - -lead-time=5m
             - -interval=30s
             - -window=3h
             - -model=baseline

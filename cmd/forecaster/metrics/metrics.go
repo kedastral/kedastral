@@ -11,6 +11,7 @@
 //   - kedastral_capacity_compute_seconds: Histogram of capacity planning duration
 //   - kedastral_forecast_age_seconds: Gauge of current forecast age
 //   - kedastral_desired_replicas: Gauge of current desired replica count
+//   - kedastral_predicted_value: Gauge of current predicted metric value
 //   - kedastral_errors_total: Counter of errors by component and reason
 //
 // All metrics include the workload label for multi-workload deployments.
@@ -28,6 +29,7 @@ type Metrics struct {
 	CapacityComputeSeconds prometheus.Histogram
 	ForecastAgeSeconds     prometheus.Gauge
 	DesiredReplicas        prometheus.Gauge
+	PredictedValue         prometheus.Gauge
 	ErrorsTotal            *prometheus.CounterVec
 }
 
@@ -79,6 +81,14 @@ func New(workload string) *Metrics {
 			},
 		}),
 
+		PredictedValue: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "kedastral_predicted_value",
+			Help: "Current predicted metric value (e.g., RPS)",
+			ConstLabels: prometheus.Labels{
+				"workload": workload,
+			},
+		}),
+
 		ErrorsTotal: promauto.NewCounterVec(prometheus.CounterOpts{
 			Name: "kedastral_errors_total",
 			Help: "Total number of errors by component and reason",
@@ -112,6 +122,11 @@ func (m *Metrics) SetForecastAge(seconds float64) {
 // SetDesiredReplicas sets the current desired replica count.
 func (m *Metrics) SetDesiredReplicas(replicas int) {
 	m.DesiredReplicas.Set(float64(replicas))
+}
+
+// SetPredictedValue sets the current predicted metric value.
+func (m *Metrics) SetPredictedValue(value float64) {
+	m.PredictedValue.Set(value)
 }
 
 // RecordError increments the error counter.
