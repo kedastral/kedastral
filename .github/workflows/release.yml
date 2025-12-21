@@ -218,44 +218,44 @@ jobs:
           ## Installation
 
           ### Helm (Recommended)
-          \`\`\`bash
+          ```bash
           # Download the Helm chart from release assets
           helm install kedastral kedastral-${{ steps.version.outputs.VERSION }}.tgz \\
             --set forecaster.config.workload=my-api \\
             --set forecaster.config.promQuery='sum(rate(http_requests_total[1m]))'
-          \`\`\`
+          ```
 
           Or install from the repository:
-          \`\`\`bash
+          ```bash
           git clone https://github.com/${{ github.repository }}.git
           cd kedastral
           git checkout ${{ steps.version.outputs.VERSION }}
           helm install kedastral ./deploy/helm/kedastral -f deploy/examples/values-example.yaml
-          \`\`\`
+          ```
 
           ### Docker Images
-          \`\`\`bash
+          ```bash
           docker pull ghcr.io/${{ github.repository }}/forecaster:${{ steps.version.outputs.VERSION }}
           docker pull ghcr.io/${{ github.repository }}/scaler:${{ steps.version.outputs.VERSION }}
-          \`\`\`
+          ```
 
           ### Pre-built Binaries
           Download the appropriate binary for your platform from the assets below.
 
           ### From Source
-          \`\`\`bash
+          ```bash
           git clone https://github.com/${{ github.repository }}.git
           cd kedastral
           git checkout ${{ steps.version.outputs.VERSION }}
           make build
-          \`\`\`
+          ```
 
           ## Quick Start
 
           After installation, create a ScaledObject to enable predictive autoscaling:
 
-          \`\`\`bash
-          kubectl apply -f - <<EOF
+          ```yaml
+          kubectl apply -f - <<EOFYAML
           apiVersion: keda.sh/v1alpha1
           kind: ScaledObject
           metadata:
@@ -271,8 +271,8 @@ jobs:
               metadata:
                 scalerAddress: kedastral-scaler.default.svc.cluster.local:50051
                 workload: my-api
-          EOF
-          \`\`\`
+          EOFYAML
+          ```
 
           ## Documentation
 
