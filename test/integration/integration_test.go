@@ -115,7 +115,6 @@ with socketserver.TCPServer(("", PORT), PrometheusHandler) as httpd:
 			"-max=20",
 			"-horizon=6m",
 			"-step=1m",
-			"-lead-time=5m",
 			"-interval=5s",
 			"-window=5m",
 			"-log-level=debug",
