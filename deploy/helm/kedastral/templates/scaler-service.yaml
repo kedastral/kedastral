@@ -1,0 +1,25 @@
+{{- if .Values.scaler.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kedastral.scaler.serviceName" . }}
+  labels:
+    {{- include "kedastral.scaler.labels" . | nindent 4 }}
+  {{- with .Values.scaler.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.scaler.service.type }}
+  ports:
+  - port: {{ .Values.scaler.service.grpcPort }}
+    targetPort: grpc
+    protocol: TCP
+    name: grpc
+  - port: {{ .Values.scaler.service.httpPort }}
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "kedastral.scaler.selectorLabels" . | nindent 4 }}
+{{- end }}

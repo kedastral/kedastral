@@ -1,0 +1,101 @@
+{{- if .Values.scaler.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kedastral.fullname" . }}-scaler
+  labels:
+    {{- include "kedastral.scaler.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.scaler.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kedastral.scaler.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/scaler-deployment.yaml") . | sha256sum }}
+        {{- with .Values.scaler.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "kedastral.scaler.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "kedastral.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.scaler.podSecurityContext | nindent 8 }}
+      containers:
+      - name: scaler
+        securityContext:
+          {{- toYaml .Values.scaler.securityContext | nindent 10 }}
+        image: {{ include "kedastral.scaler.image" . }}
+        imagePullPolicy: {{ .Values.scaler.image.pullPolicy }}
+        ports:
+        - name: grpc
+          containerPort: 50051
+          protocol: TCP
+        - name: http
+          containerPort: 8082
+          protocol: TCP
+        env:
+        - name: SCALER_LISTEN
+          value: {{ .Values.scaler.config.listen | quote }}
+        - name: FORECASTER_URL
+          value: {{ .Values.scaler.config.forecasterURL | quote }}
+        - name: LEAD_TIME
+          value: {{ .Values.scaler.config.leadTime | quote }}
+        - name: LOG_LEVEL
+          value: {{ .Values.scaler.config.logLevel | quote }}
+        - name: LOG_FORMAT
+          value: {{ .Values.scaler.config.logFormat | quote }}
+        {{- with .Values.scaler.env }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.scaler.envFrom }}
+        envFrom:
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          {{- toYaml .Values.scaler.resources | nindent 10 }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      {{- with .Values.scaler.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.scaler.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.scaler.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

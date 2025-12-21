@@ -1,0 +1,21 @@
+{{- if .Values.forecaster.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kedastral.forecaster.serviceName" . }}
+  labels:
+    {{- include "kedastral.forecaster.labels" . | nindent 4 }}
+  {{- with .Values.forecaster.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.forecaster.service.type }}
+  ports:
+  - port: {{ .Values.forecaster.service.port }}
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "kedastral.forecaster.selectorLabels" . | nindent 4 }}
+{{- end }}

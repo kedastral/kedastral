@@ -1,0 +1,61 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+
+Kedastral has been deployed with the following components:
+
+{{- if .Values.forecaster.enabled }}
+✓ Forecaster - Predictive forecast engine
+  Service: {{ include "kedastral.forecaster.serviceName" . }}
+  Port: {{ .Values.forecaster.service.port }}
+  Workload: {{ .Values.forecaster.config.workload }}
+  Metric: {{ .Values.forecaster.config.metric }}
+{{- end }}
+
+{{- if .Values.scaler.enabled }}
+✓ Scaler - KEDA External Scaler
+  Service: {{ include "kedastral.scaler.serviceName" . }}
+  gRPC Port: {{ .Values.scaler.service.grpcPort }}
+  HTTP Port: {{ .Values.scaler.service.httpPort }}
+  Lead Time: {{ .Values.scaler.config.leadTime }}
+{{- end }}
+
+To get started:
+
+1. Check the status of your deployment:
+   kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+
+2. View forecaster logs:
+   kubectl logs -l app.kubernetes.io/component=forecaster -f
+
+3. View scaler logs:
+   kubectl logs -l app.kubernetes.io/component=scaler -f
+
+4. Access the forecaster API:
+   kubectl port-forward svc/{{ include "kedastral.forecaster.serviceName" . }} 8081:{{ .Values.forecaster.service.port }}
+   curl http://localhost:8081/forecast/current?workload={{ .Values.forecaster.config.workload }}
+
+5. Create a ScaledObject to enable predictive autoscaling:
+
+cat <<EOF | kubectl apply -f -
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ .Values.forecaster.config.workload }}-scaledobject
+spec:
+  scaleTargetRef:
+    name: {{ .Values.forecaster.config.workload }}
+  minReplicaCount: {{ .Values.forecaster.config.minReplicas }}
+  maxReplicaCount: {{ .Values.forecaster.config.maxReplicas }}
+  pollingInterval: 30
+  cooldownPeriod: 300
+  triggers:
+  - type: external
+    metadata:
+      scalerAddress: {{ include "kedastral.scaler.serviceName" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.scaler.service.grpcPort }}
+      workload: {{ .Values.forecaster.config.workload }}
+EOF
+
+For more information:
+- Documentation: https://github.com/kedastral/kedastral
+- Report issues: https://github.com/kedastral/kedastral/issues

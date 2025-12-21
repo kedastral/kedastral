@@ -1,0 +1,144 @@
+{{- if .Values.forecaster.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kedastral.fullname" . }}-forecaster
+  labels:
+    {{- include "kedastral.forecaster.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.forecaster.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kedastral.forecaster.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/forecaster-deployment.yaml") . | sha256sum }}
+        {{- with .Values.forecaster.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "kedastral.forecaster.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "kedastral.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.forecaster.podSecurityContext | nindent 8 }}
+      containers:
+      - name: forecaster
+        securityContext:
+          {{- toYaml .Values.forecaster.securityContext | nindent 10 }}
+        image: {{ include "kedastral.forecaster.image" . }}
+        imagePullPolicy: {{ .Values.forecaster.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: 8081
+          protocol: TCP
+        env:
+        - name: LISTEN
+          value: {{ .Values.forecaster.config.listen | quote }}
+        - name: WORKLOAD
+          value: {{ .Values.forecaster.config.workload | quote }}
+        - name: METRIC
+          value: {{ .Values.forecaster.config.metric | quote }}
+        - name: HORIZON
+          value: {{ .Values.forecaster.config.horizon | quote }}
+        - name: STEP
+          value: {{ .Values.forecaster.config.step | quote }}
+        - name: INTERVAL
+          value: {{ .Values.forecaster.config.interval | quote }}
+        - name: WINDOW
+          value: {{ .Values.forecaster.config.window | quote }}
+        - name: TARGET_PER_POD
+          value: {{ .Values.forecaster.config.targetPerPod | quote }}
+        - name: HEADROOM
+          value: {{ .Values.forecaster.config.headroom | quote }}
+        - name: MIN_REPLICAS
+          value: {{ .Values.forecaster.config.minReplicas | quote }}
+        - name: MAX_REPLICAS
+          value: {{ .Values.forecaster.config.maxReplicas | quote }}
+        - name: UP_MAX_FACTOR
+          value: {{ .Values.forecaster.config.upMaxFactor | quote }}
+        - name: DOWN_MAX_PERCENT
+          value: {{ .Values.forecaster.config.downMaxPercent | quote }}
+        - name: PROM_URL
+          value: {{ .Values.forecaster.config.promURL | quote }}
+        - name: PROM_QUERY
+          value: {{ .Values.forecaster.config.promQuery | quote }}
+        - name: STORAGE
+          value: {{ .Values.forecaster.config.storage | quote }}
+        {{- if eq .Values.forecaster.config.storage "redis" }}
+        - name: REDIS_ADDR
+          value: {{ .Values.forecaster.config.redis.addr | quote }}
+        - name: REDIS_PASSWORD
+          value: {{ .Values.forecaster.config.redis.password | quote }}
+        - name: REDIS_DB
+          value: {{ .Values.forecaster.config.redis.db | quote }}
+        - name: REDIS_TTL
+          value: {{ .Values.forecaster.config.redis.ttl | quote }}
+        {{- end }}
+        - name: MODEL
+          value: {{ .Values.forecaster.config.model | quote }}
+        {{- if eq .Values.forecaster.config.model "arima" }}
+        - name: ARIMA_P
+          value: {{ .Values.forecaster.config.arima.p | quote }}
+        - name: ARIMA_D
+          value: {{ .Values.forecaster.config.arima.d | quote }}
+        - name: ARIMA_Q
+          value: {{ .Values.forecaster.config.arima.q | quote }}
+        {{- end }}
+        - name: LOG_LEVEL
+          value: {{ .Values.forecaster.config.logLevel | quote }}
+        - name: LOG_FORMAT
+          value: {{ .Values.forecaster.config.logFormat | quote }}
+        {{- with .Values.forecaster.env }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.forecaster.envFrom }}
+        envFrom:
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          {{- toYaml .Values.forecaster.resources | nindent 10 }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      {{- with .Values.forecaster.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.forecaster.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.forecaster.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

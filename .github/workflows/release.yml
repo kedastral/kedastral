@@ -156,10 +156,46 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  helm:
+    name: Package Helm Chart
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.14.0'
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Update Chart.yaml version
+        run: |
+          sed -i "s/^version:.*/version: ${{ steps.version.outputs.VERSION }}/" deploy/helm/kedastral/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${{ steps.version.outputs.VERSION }}\"/" deploy/helm/kedastral/Chart.yaml
+
+      - name: Lint Helm chart
+        run: helm lint deploy/helm/kedastral
+
+      - name: Package Helm chart
+        run: |
+          mkdir -p dist/helm
+          helm package deploy/helm/kedastral -d dist/helm
+
+      - name: Upload Helm chart artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart
+          path: dist/helm/*.tgz
+
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [build, docker]
+    needs: [build, docker, helm]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -181,6 +217,31 @@ jobs:
 
           ## Installation
 
+          ### Helm (Recommended)
+          \`\`\`bash
+          # Download the Helm chart from release assets
+          helm install kedastral kedastral-${{ steps.version.outputs.VERSION }}.tgz \\
+            --set forecaster.config.workload=my-api \\
+            --set forecaster.config.promQuery='sum(rate(http_requests_total[1m]))'
+          \`\`\`
+
+          Or install from the repository:
+          \`\`\`bash
+          git clone https://github.com/${{ github.repository }}.git
+          cd kedastral
+          git checkout ${{ steps.version.outputs.VERSION }}
+          helm install kedastral ./deploy/helm/kedastral -f deploy/examples/values-example.yaml
+          \`\`\`
+
+          ### Docker Images
+          \`\`\`bash
+          docker pull ghcr.io/${{ github.repository }}/forecaster:${{ steps.version.outputs.VERSION }}
+          docker pull ghcr.io/${{ github.repository }}/scaler:${{ steps.version.outputs.VERSION }}
+          \`\`\`
+
+          ### Pre-built Binaries
+          Download the appropriate binary for your platform from the assets below.
+
           ### From Source
           \`\`\`bash
           git clone https://github.com/${{ github.repository }}.git
@@ -189,25 +250,43 @@ jobs:
           make build
           \`\`\`
 
-          ### Pre-built Binaries
-          Download the appropriate binary for your platform from the assets below.
+          ## Quick Start
 
-          ### Docker Images
+          After installation, create a ScaledObject to enable predictive autoscaling:
+
           \`\`\`bash
-          docker pull ghcr.io/${{ github.repository }}/forecaster:${{ steps.version.outputs.VERSION }}
-          docker pull ghcr.io/${{ github.repository }}/scaler:${{ steps.version.outputs.VERSION }}
+          kubectl apply -f - <<EOF
+          apiVersion: keda.sh/v1alpha1
+          kind: ScaledObject
+          metadata:
+            name: my-api-scaledobject
+          spec:
+            scaleTargetRef:
+              name: my-api
+            minReplicaCount: 2
+            maxReplicaCount: 50
+            pollingInterval: 30
+            triggers:
+            - type: external
+              metadata:
+                scalerAddress: kedastral-scaler.default.svc.cluster.local:50051
+                workload: my-api
+          EOF
           \`\`\`
 
-          ## Deployment
+          ## Documentation
 
-          See [examples/README.md](./examples/README.md) for Kubernetes deployment instructions.
+          - [Helm Chart Configuration](./deploy/examples/README.md)
+          - [ScaledObject Examples](./deploy/examples/)
+          - [Architecture Documentation](./docs/architecture.md)
 
           ## What's Included
 
           - Forecaster binary with Prometheus integration
           - Scaler binary implementing KEDA External Scaler protocol
           - Baseline statistical forecasting model
-          - Docker images for both components
+          - Docker images for both components (amd64, arm64)
+          - Production-ready Helm chart
           - Kubernetes deployment examples
           EOF
           cat release-notes.md
@@ -218,6 +297,7 @@ jobs:
           body_path: release-notes.md
           files: |
             dist/**/*.tar.gz
+            dist/helm-chart/*.tgz
           draft: false
           prerelease: false
         env:

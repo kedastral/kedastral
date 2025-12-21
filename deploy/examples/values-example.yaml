@@ -1,0 +1,93 @@
+# Example values.yaml for deploying Kedastral
+#
+# This demonstrates a typical production configuration for an HTTP API
+# that receives traffic with daily and weekly patterns.
+#
+# Usage:
+#   helm install kedastral ./deploy/helm/kedastral -f deploy/examples/values-example.yaml
+
+forecaster:
+  enabled: true
+
+  image:
+    repository: kedastral/forecaster
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  config:
+    # Workload to forecast (must match your deployment name)
+    workload: "my-api"
+    metric: "http_requests_per_second"
+
+    # Forecast parameters
+    horizon: 30m      # How far ahead to forecast
+    step: 1m          # Granularity of forecast
+    interval: 30s     # How often to generate new forecasts
+    window: 2h        # Historical data window for training
+
+    # Capacity planning policy
+    targetPerPod: 100.0       # Target RPS per pod
+    headroom: 1.2             # 20% safety buffer
+    minReplicas: 2
+    maxReplicas: 50
+    upMaxFactor: 2.0          # Max 2x scale-up per step
+    downMaxPercent: 50        # Max 50% scale-down per step
+
+    # Prometheus configuration
+    promURL: "http://prometheus-server.monitoring.svc.cluster.local:80"
+    promQuery: 'sum(rate(http_requests_total{deployment="my-api"}[1m]))'
+
+    # Storage backend
+    storage: redis    # Use Redis for persistence
+
+    redis:
+      addr: "redis-master.default.svc.cluster.local:6379"
+      password: ""    # Use a secret in production!
+      db: 0
+      ttl: 1h
+
+    # Forecasting model
+    model: baseline   # baseline (simple) or arima (advanced)
+
+    # Logging
+    logLevel: info
+    logFormat: json
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+scaler:
+  enabled: true
+
+  image:
+    repository: kedastral/scaler
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  config:
+    forecasterURL: "http://kedastral-forecaster:8081"
+    leadTime: 15m     # Pre-scale 15 minutes ahead of predicted load
+
+    logLevel: info
+    logFormat: json
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+serviceAccount:
+  create: true
+  annotations: {}

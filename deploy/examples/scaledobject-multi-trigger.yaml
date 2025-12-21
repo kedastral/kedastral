@@ -1,0 +1,36 @@
+# Example ScaledObject with multiple triggers
+# This demonstrates combining Kedastral's predictive scaling with
+# reactive triggers for safety and responsiveness.
+
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: my-api-hybrid-scaledobject
+  namespace: default
+spec:
+  scaleTargetRef:
+    name: my-api
+
+  minReplicaCount: 2
+  maxReplicaCount: 50
+
+  pollingInterval: 30
+  cooldownPeriod: 300
+
+  # Multiple triggers work with MAX semantics
+  # KEDA will scale to the maximum replica count across all triggers
+  triggers:
+  # Predictive scaling from Kedastral
+  - type: external
+    metadata:
+      scalerAddress: kedastral-scaler.default.svc.cluster.local:50051
+      workload: "my-api"
+
+  # Reactive scaling from Prometheus (safety net)
+  # This ensures immediate response to unexpected load spikes
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus:9090
+      metricName: http_requests_per_second
+      query: sum(rate(http_requests_total{deployment="my-api"}[1m]))
+      threshold: "5000"  # Emergency scale-up threshold

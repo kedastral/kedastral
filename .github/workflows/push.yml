@@ -1,4 +1,4 @@
-name: 'Security Scan'
+name: 'CI Checks'
 
 # Run workflow each time code is pushed to your repository and on a schedule.
 # The scheduled workflow runs every at 00:00 on Sunday UTC time.
@@ -8,7 +8,8 @@ on:
     - cron: '0 0 * * 0'
 
 jobs:
-  tests:
+  security:
+    name: Security Scan
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -29,3 +30,31 @@ jobs:
         with:
           # Path to SARIF file relative to the root of the repository
           sarif_file: results.sarif
+
+  helm-lint:
+    name: Helm Chart Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.14.0'
+
+      - name: Lint Helm chart
+        run: helm lint deploy/helm/kedastral
+
+      - name: Template Helm chart
+        run: |
+          helm template kedastral deploy/helm/kedastral \
+            --set forecaster.config.workload=test-app \
+            --set forecaster.config.promQuery='up' \
+            > /tmp/manifests.yaml
+
+      - name: Validate Kubernetes manifests
+        uses: instrumenta/kubeval-action@master
+        with:
+          files: /tmp/manifests.yaml
+          version: '1.29.0'

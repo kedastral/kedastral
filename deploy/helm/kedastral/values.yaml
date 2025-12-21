@@ -1,0 +1,212 @@
+# Default values for kedastral.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global settings
+global:
+  # Image registry to use for all images
+  imageRegistry: ""
+
+# Forecaster configuration
+forecaster:
+  enabled: true
+
+  image:
+    repository: kedastral/forecaster
+    pullPolicy: IfNotPresent
+    tag: "" # Defaults to Chart appVersion
+
+  replicaCount: 1
+
+  service:
+    type: ClusterIP
+    port: 8081
+    annotations: {}
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  # Forecaster configuration
+  config:
+    # Server listen address
+    listen: ":8081"
+
+    # Workload identification (required)
+    workload: "my-api"
+    metric: "http_rps"
+
+    # Forecast parameters
+    horizon: 30m
+    step: 1m
+    interval: 30s
+    window: 30m
+
+    # Capacity planning policy
+    targetPerPod: 100.0
+    headroom: 1.2
+    minReplicas: 1
+    maxReplicas: 100
+    upMaxFactor: 2.0
+    downMaxPercent: 50
+
+    # Prometheus configuration (required)
+    promURL: "http://prometheus:9090"
+    promQuery: 'sum(rate(http_requests_total[1m]))'
+
+    # Storage backend: memory or redis
+    storage: memory
+
+    # Redis configuration (only if storage=redis)
+    redis:
+      addr: "redis:6379"
+      password: ""
+      db: 0
+      ttl: 30m
+
+    # Model selection: baseline or arima
+    model: baseline
+
+    # ARIMA parameters (only if model=arima)
+    arima:
+      p: 0  # 0 = auto
+      d: 0  # 0 = auto
+      q: 0  # 0 = auto
+
+    # Logging
+    logLevel: info
+    logFormat: text
+
+  # Pod annotations
+  podAnnotations: {}
+
+  # Pod security context
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    fsGroup: 65532
+
+  # Container security context
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+
+  # Node selector
+  nodeSelector: {}
+
+  # Tolerations
+  tolerations: []
+
+  # Affinity
+  affinity: {}
+
+  # Environment variables from secrets/configmaps
+  envFrom: []
+  # - secretRef:
+  #     name: forecaster-secrets
+
+  # Additional environment variables
+  env: []
+  # - name: CUSTOM_VAR
+  #   value: "custom-value"
+
+# Scaler configuration
+scaler:
+  enabled: true
+
+  image:
+    repository: kedastral/scaler
+    pullPolicy: IfNotPresent
+    tag: "" # Defaults to Chart appVersion
+
+  replicaCount: 1
+
+  service:
+    type: ClusterIP
+    # gRPC port for KEDA
+    grpcPort: 50051
+    # HTTP port for metrics/health
+    httpPort: 8082
+    annotations: {}
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+  # Scaler configuration
+  config:
+    # gRPC listen address
+    listen: ":50051"
+
+    # Forecaster URL
+    forecasterURL: "http://kedastral-forecaster:8081"
+
+    # Lead time for proactive scaling
+    leadTime: 15m
+
+    # Logging
+    logLevel: info
+    logFormat: text
+
+  # Pod annotations
+  podAnnotations: {}
+
+  # Pod security context
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    fsGroup: 65532
+
+  # Container security context
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+
+  # Node selector
+  nodeSelector: {}
+
+  # Tolerations
+  tolerations: []
+
+  # Affinity
+  affinity: {}
+
+  # Environment variables from secrets/configmaps
+  envFrom: []
+
+  # Additional environment variables
+  env: []
+
+# ServiceAccount configuration
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# Image pull secrets
+imagePullSecrets: []
+# - name: regcred
+
+# Common labels to add to all resources
+commonLabels: {}
+
+# Common annotations to add to all resources
+commonAnnotations: {}

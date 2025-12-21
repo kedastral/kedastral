@@ -1,0 +1,19 @@
+apiVersion: v2
+name: kedastral
+description: A Helm chart for Kedastral - Predictive Autoscaling for KEDA
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - kubernetes
+  - autoscaling
+  - keda
+  - forecasting
+  - predictive
+home: https://github.com/kedastral/kedastral
+sources:
+  - https://github.com/kedastral/kedastral
+maintainers:
+  - name: Kedastral Team
+    email: maintainers@kedastral.io
+dependencies: []
