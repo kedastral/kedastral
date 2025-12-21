@@ -26,7 +26,7 @@ jobs:
         run: go test ./... -v -short
 
       - name: Run integration tests
-        run: go test ./test/integration -v -timeout 5m
+        run: go test ./test/integration -v -timeout 5m -tags integration
 
   build:
     name: Build Binaries
