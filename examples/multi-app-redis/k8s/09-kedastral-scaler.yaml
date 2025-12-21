@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kedastral-scaler
+  namespace: multi-app-redis
+  labels:
+    app: kedastral-scaler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kedastral-scaler
+  template:
+    metadata:
+      labels:
+        app: kedastral-scaler
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8082"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: scaler
+          image: kedastral-scaler:latest
+          imagePullPolicy: Never
+          args:
+            - -listen=:50051
+            - -storage=redis
+            - -redis-addr=redis:6379
+            - -lead-time=5m
+            - -stale-after=2m
+          ports:
+            - containerPort: 50051
+              name: grpc
+            - containerPort: 8082
+              name: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8082
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8082
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kedastral-scaler
+  namespace: multi-app-redis
+  labels:
+    app: kedastral-scaler
+spec:
+  selector:
+    app: kedastral-scaler
+  ports:
+    - port: 50051
+      targetPort: 50051
+      name: grpc
+    - port: 8082
+      targetPort: 8082
+      name: http
+  type: ClusterIP

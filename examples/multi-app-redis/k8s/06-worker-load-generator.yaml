@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-load-generator
+  namespace: multi-app-redis
+  labels:
+    app: worker-load-generator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker-load-generator
+  template:
+    metadata:
+      labels:
+        app: worker-load-generator
+    spec:
+      containers:
+        - name: load-generator
+          image: load-generator:latest
+          imagePullPolicy: Never
+          env:
+            - name: TARGET_URL
+              value: "http://worker-app:8080"
+            - name: PATTERN
+              value: "business-hours"
+            - name: BASE_RPS
+              value: "20"
+            - name: PEAK_RPS
+              value: "100"
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"

@@ -23,7 +23,9 @@ import (
 
 	"github.com/HatiCode/kedastral/cmd/scaler/metrics"
 	pb "github.com/HatiCode/kedastral/pkg/api/externalscaler"
+	"github.com/HatiCode/kedastral/pkg/httpx"
 	"github.com/HatiCode/kedastral/pkg/storage"
+	"github.com/HatiCode/kedastral/pkg/tls"
 )
 
 // Scaler implements the KEDA ExternalScaler gRPC interface
@@ -36,21 +38,28 @@ type Scaler struct {
 	metrics       *metrics.Metrics
 }
 
-// New creates a new scaler instance
-func New(forecasterURL string, leadTime time.Duration, logger *slog.Logger, m *metrics.Metrics) *Scaler {
+// New creates a new scaler instance with optional mTLS support.
+func New(forecasterURL string, leadTime time.Duration, tlsCfg tls.Config, logger *slog.Logger, m *metrics.Metrics) (*Scaler, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
+	client, err := httpx.NewClient(tlsCfg, 10*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("create HTTP client: %w", err)
+	}
+
+	if tlsCfg.Enabled {
+		logger.Info("HTTP client configured with mTLS")
+	}
+
 	return &Scaler{
 		forecasterURL: forecasterURL,
-		client: &http.Client{
-			Timeout: 10 * time.Second,
-		},
-		logger:   logger,
-		leadTime: leadTime,
-		metrics:  m,
-	}
+		client:        client,
+		logger:        logger,
+		leadTime:      leadTime,
+		metrics:       m,
+	}, nil
 }
 
 // IsActive determines if the scaler is active for the given ScaledObject

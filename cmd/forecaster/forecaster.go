@@ -1,22 +1,23 @@
 // Package main implements the core forecast loop orchestration.
 //
-// This file contains the Forecaster type which orchestrates the forecast pipeline:
+// This file contains the WorkloadForecaster and MultiForecaster types which orchestrate
+// the forecast pipeline for one or more workloads concurrently:
 //
 //	collect → buildFeatures → predict → calculateReplicas → storeSnapshot
 //
-// The Forecaster runs continuously via Run(), executing Tick() at regular intervals.
-// Each tick performs one complete forecast cycle, updating the stored snapshot that
-// the scaler consumes via HTTP API.
+// WorkloadForecaster manages forecasting for a single workload with isolated state.
+// MultiForecaster coordinates multiple WorkloadForecasters running in parallel goroutines.
 //
-// The forecast loop is instrumented with Prometheus metrics tracking the duration
-// of each pipeline stage (collect, predict, capacity planning) and any errors
-// encountered during execution.
+// Each workload forecaster runs independently with panic recovery and per-operation timeouts
+// to ensure one failing workload does not affect others. The forecast loop is instrumented
+// with Prometheus metrics tracking the duration of each pipeline stage and any errors.
 package main
 
 import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/HatiCode/kedastral/cmd/forecaster/metrics"
@@ -27,9 +28,9 @@ import (
 	"github.com/HatiCode/kedastral/pkg/storage"
 )
 
-// Forecaster orchestrates the forecast loop: collect → predict → plan → store.
-type Forecaster struct {
-	workload        string
+// WorkloadForecaster orchestrates the forecast loop for a single workload.
+type WorkloadForecaster struct {
+	name            string
 	adapter         adapters.Adapter
 	model           models.Model
 	builder         *features.Builder
@@ -38,29 +39,37 @@ type Forecaster struct {
 	horizon         time.Duration
 	step            time.Duration
 	window          time.Duration
+	interval        time.Duration
 	logger          *slog.Logger
 	metrics         *metrics.Metrics
 	currentReplicas int
 }
 
-// New creates a new Forecaster.
-func New(
-	workload string,
+// MultiForecaster manages multiple workload forecasters running concurrently.
+type MultiForecaster struct {
+	workloads map[string]*WorkloadForecaster
+	store     storage.Store
+	logger    *slog.Logger
+}
+
+// NewWorkloadForecaster creates a new forecaster for a single workload.
+func NewWorkloadForecaster(
+	name string,
 	adapter adapters.Adapter,
 	model models.Model,
 	builder *features.Builder,
 	store storage.Store,
 	policy *capacity.Policy,
-	horizon, step, window time.Duration,
+	horizon, step, window, interval time.Duration,
 	logger *slog.Logger,
-	metrics *metrics.Metrics,
-) *Forecaster {
+	m *metrics.Metrics,
+) *WorkloadForecaster {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
-	return &Forecaster{
-		workload:        workload,
+	return &WorkloadForecaster{
+		name:            name,
 		adapter:         adapter,
 		model:           model,
 		builder:         builder,
@@ -69,96 +78,168 @@ func New(
 		horizon:         horizon,
 		step:            step,
 		window:          window,
-		logger:          logger,
-		metrics:         metrics,
+		interval:        interval,
+		logger:          logger.With("workload", name),
+		metrics:         m,
 		currentReplicas: policy.MinReplicas,
 	}
 }
 
-// Run executes the forecast loop at regular intervals.
-// Blocks until context is canceled.
-func (f *Forecaster) Run(ctx context.Context, interval time.Duration) error {
-	f.logger.Info("starting forecast loop", "interval", interval, "window", f.window)
+// NewMultiForecaster creates a new multi-workload forecaster.
+func NewMultiForecaster(workloads []*WorkloadForecaster, store storage.Store, logger *slog.Logger) *MultiForecaster {
+	if logger == nil {
+		logger = slog.Default()
+	}
 
-	ticker := time.NewTicker(interval)
+	wm := make(map[string]*WorkloadForecaster)
+	for _, wf := range workloads {
+		wm[wf.name] = wf
+	}
+
+	return &MultiForecaster{
+		workloads: wm,
+		store:     store,
+		logger:    logger,
+	}
+}
+
+// Run executes all workload forecasters concurrently until context is canceled.
+func (mf *MultiForecaster) Run(ctx context.Context) error {
+	if len(mf.workloads) == 0 {
+		return fmt.Errorf("no workloads configured")
+	}
+
+	mf.logger.Info("starting multi-workload forecaster", "workloads", len(mf.workloads))
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(mf.workloads))
+
+	for name, wf := range mf.workloads {
+		wg.Add(1)
+		go func(name string, wf *WorkloadForecaster) {
+			defer wg.Done()
+			if err := wf.Run(ctx); err != nil && err != context.Canceled {
+				errCh <- fmt.Errorf("workload %q: %w", name, err)
+			}
+		}(name, wf)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	var firstErr error
+	for err := range errCh {
+		if firstErr == nil {
+			firstErr = err
+		}
+		mf.logger.Error("workload forecaster error", "error", err)
+	}
+
+	mf.logger.Info("multi-workload forecaster stopped")
+	return firstErr
+}
+
+// GetStore returns the shared storage backend.
+func (mf *MultiForecaster) GetStore() storage.Store {
+	return mf.store
+}
+
+// Run executes the forecast loop for this workload with panic recovery and graceful shutdown.
+func (wf *WorkloadForecaster) Run(ctx context.Context) error {
+	defer func() {
+		if r := recover(); r != nil {
+			wf.logger.Error("workload forecaster panic recovered", "panic", r)
+		}
+	}()
+
+	wf.logger.Info("starting workload forecaster", "interval", wf.interval, "window", wf.window)
+
+	ticker := time.NewTicker(wf.interval)
 	defer ticker.Stop()
 
-	if err := f.Tick(ctx); err != nil {
-		f.logger.Error("initial forecast tick failed", "error", err)
+	tickCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	if err := wf.tick(tickCtx); err != nil {
+		wf.logger.Error("initial forecast tick failed", "error", err)
 	}
+	cancel()
 
 	for {
 		select {
 		case <-ctx.Done():
-			f.logger.Info("forecast loop stopped")
+			wf.logger.Info("workload forecaster stopped")
 			return ctx.Err()
 		case <-ticker.C:
-			if err := f.Tick(ctx); err != nil {
-				f.logger.Error("forecast tick failed", "error", err)
+			tickCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			if err := wf.tick(tickCtx); err != nil {
+				wf.logger.Error("forecast tick failed", "error", err)
 			}
+			cancel()
 		}
 	}
 }
 
-// Tick performs one forecast cycle.
-// Exported for testing purposes.
-func (f *Forecaster) Tick(ctx context.Context) error {
+// tick performs one forecast cycle with per-operation timeouts.
+func (wf *WorkloadForecaster) tick(ctx context.Context) error {
 	start := time.Now()
-	f.logger.Debug("starting forecast tick")
+	wf.logger.Debug("starting forecast tick")
 
-	df, collectDuration, err := f.collect(ctx)
+	collectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	df, collectDuration, err := wf.collect(collectCtx)
+	cancel()
 	if err != nil {
-		if f.metrics != nil {
-			f.metrics.RecordError("adapter", "collect_failed")
+		if wf.metrics != nil {
+			wf.metrics.RecordError("adapter", "collect_failed")
 		}
 		return fmt.Errorf("collect: %w", err)
 	}
 
-	featureFrame, err := f.buildFeatures(df)
+	featureFrame, err := wf.buildFeatures(df)
 	if err != nil {
-		if f.metrics != nil {
-			f.metrics.RecordError("features", "build_failed")
+		if wf.metrics != nil {
+			wf.metrics.RecordError("features", "build_failed")
 		}
 		return fmt.Errorf("build features: %w", err)
 	}
 
-	// Train the model on historical data to learn patterns
-	if err := f.model.Train(ctx, featureFrame); err != nil {
-		f.logger.Debug("model training skipped or failed", "error", err)
-		// Training is optional for some models (e.g., baseline), so we don't fail here
+	trainCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	if err := wf.model.Train(trainCtx, featureFrame); err != nil {
+		wf.logger.Debug("model training skipped or failed", "error", err)
 	}
+	cancel()
 
-	forecast, predictDuration, err := f.predict(ctx, featureFrame)
+	predictCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	forecast, predictDuration, err := wf.predict(predictCtx, featureFrame)
+	cancel()
 	if err != nil {
-		if f.metrics != nil {
-			f.metrics.RecordError("model", "predict_failed")
+		if wf.metrics != nil {
+			wf.metrics.RecordError("model", "predict_failed")
 		}
 		return fmt.Errorf("predict: %w", err)
 	}
 
-	desiredReplicas, capacityDuration := f.calculateReplicas(forecast.Values)
+	desiredReplicas, capacityDuration := wf.calculateReplicas(forecast.Values, forecast.Quantiles)
 
-	if err := f.storeSnapshot(forecast, desiredReplicas); err != nil {
-		if f.metrics != nil {
-			f.metrics.RecordError("store", "put_failed")
+	storeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	err = wf.storeSnapshot(storeCtx, forecast, desiredReplicas)
+	cancel()
+	if err != nil {
+		if wf.metrics != nil {
+			wf.metrics.RecordError("store", "put_failed")
 		}
 		return fmt.Errorf("store: %w", err)
 	}
 
-	// Update metrics
-	if f.metrics != nil {
-		f.metrics.SetForecastAge(0) // Just generated
-		f.metrics.SetDesiredReplicas(f.currentReplicas)
-		// Set the current predicted value (first forecast point)
+	if wf.metrics != nil {
+		wf.metrics.SetForecastAge(0)
+		wf.metrics.SetDesiredReplicas(wf.currentReplicas)
 		if len(forecast.Values) > 0 {
-			f.metrics.SetPredictedValue(forecast.Values[0])
+			wf.metrics.SetPredictedValue(forecast.Values[0])
 		}
 	}
 
 	totalDuration := time.Since(start)
-	f.logger.Info("forecast tick complete",
-		"workload", f.workload,
-		"current_replicas", f.currentReplicas,
+	wf.logger.Info("forecast tick complete",
+		"current_replicas", wf.currentReplicas,
 		"forecast_points", len(forecast.Values),
 		"collect_ms", collectDuration.Milliseconds(),
 		"predict_ms", predictDuration.Milliseconds(),
@@ -169,61 +250,56 @@ func (f *Forecaster) Tick(ctx context.Context) error {
 	return nil
 }
 
-// collect retrieves metrics from the adapter.
-func (f *Forecaster) collect(ctx context.Context) (*adapters.DataFrame, time.Duration, error) {
+func (wf *WorkloadForecaster) collect(ctx context.Context) (*adapters.DataFrame, time.Duration, error) {
 	start := time.Now()
 
-	df, err := f.adapter.Collect(ctx, int(f.window.Seconds()))
+	df, err := wf.adapter.Collect(ctx, int(wf.window.Seconds()))
 	if err != nil {
 		return nil, 0, err
 	}
 
 	duration := time.Since(start)
 
-	// Record metrics
-	if f.metrics != nil {
-		f.metrics.RecordCollect(duration.Seconds())
+	if wf.metrics != nil {
+		wf.metrics.RecordCollect(duration.Seconds())
 	}
 
-	f.logger.Info("collected metrics",
-		"adapter", f.adapter.Name(),
+	wf.logger.Info("collected metrics",
+		"adapter", wf.adapter.Name(),
 		"rows", len(df.Rows),
-		"window_seconds", int(f.window.Seconds()),
+		"window_seconds", int(wf.window.Seconds()),
 		"duration_ms", duration.Milliseconds(),
 	)
 
 	return df, duration, nil
 }
 
-// buildFeatures converts DataFrame to FeatureFrame.
-func (f *Forecaster) buildFeatures(df *adapters.DataFrame) (models.FeatureFrame, error) {
-	featureFrame, err := f.builder.BuildFeatures(*df)
+func (wf *WorkloadForecaster) buildFeatures(df *adapters.DataFrame) (models.FeatureFrame, error) {
+	featureFrame, err := wf.builder.BuildFeatures(*df)
 	if err != nil {
 		return models.FeatureFrame{}, err
 	}
 
-	f.logger.Debug("built features", "rows", len(featureFrame.Rows))
+	wf.logger.Debug("built features", "rows", len(featureFrame.Rows))
 	return featureFrame, nil
 }
 
-// predict generates forecast using the model.
-func (f *Forecaster) predict(ctx context.Context, features models.FeatureFrame) (models.Forecast, time.Duration, error) {
+func (wf *WorkloadForecaster) predict(ctx context.Context, features models.FeatureFrame) (models.Forecast, time.Duration, error) {
 	start := time.Now()
 
-	forecast, err := f.model.Predict(ctx, features)
+	forecast, err := wf.model.Predict(ctx, features)
 	if err != nil {
 		return models.Forecast{}, 0, err
 	}
 
 	duration := time.Since(start)
 
-	// Record metrics
-	if f.metrics != nil {
-		f.metrics.RecordPredict(duration.Seconds())
+	if wf.metrics != nil {
+		wf.metrics.RecordPredict(duration.Seconds())
 	}
 
-	f.logger.Debug("predicted forecast",
-		"model", f.model.Name(),
+	wf.logger.Debug("predicted forecast",
+		"model", wf.model.Name(),
 		"values", len(forecast.Values),
 		"duration_ms", duration.Milliseconds(),
 	)
@@ -231,62 +307,51 @@ func (f *Forecaster) predict(ctx context.Context, features models.FeatureFrame) 
 	return forecast, duration, nil
 }
 
-// calculateReplicas converts forecast values to desired replica counts.
-func (f *Forecaster) calculateReplicas(values []float64) ([]int, time.Duration) {
+func (wf *WorkloadForecaster) calculateReplicas(values []float64, quantiles map[float64][]float64) ([]int, time.Duration) {
 	start := time.Now()
 
 	desiredReplicas := capacity.ToReplicas(
-		f.currentReplicas,
+		wf.currentReplicas,
 		values,
-		int(f.step.Seconds()),
-		*f.policy,
+		int(wf.step.Seconds()),
+		*wf.policy,
+		quantiles,
 	)
 
 	if len(desiredReplicas) > 0 {
-		f.currentReplicas = desiredReplicas[0]
+		wf.currentReplicas = desiredReplicas[0]
 	}
 
 	duration := time.Since(start)
 
-	// Record metrics
-	if f.metrics != nil {
-		f.metrics.RecordCapacity(duration.Seconds())
+	if wf.metrics != nil {
+		wf.metrics.RecordCapacity(duration.Seconds())
 	}
 
-	f.logger.Debug("calculated replicas",
-		"current", f.currentReplicas,
+	wf.logger.Debug("calculated replicas",
+		"current", wf.currentReplicas,
 		"duration_ms", duration.Milliseconds(),
 	)
 
 	return desiredReplicas, duration
 }
 
-// storeSnapshot persists the forecast snapshot.
-func (f *Forecaster) storeSnapshot(forecast models.Forecast, desiredReplicas []int) error {
+func (wf *WorkloadForecaster) storeSnapshot(ctx context.Context, forecast models.Forecast, desiredReplicas []int) error {
 	snapshot := storage.Snapshot{
-		Workload:        f.workload,
+		Workload:        wf.name,
 		Metric:          forecast.Metric,
 		GeneratedAt:     time.Now(),
-		StepSeconds:     int(f.step.Seconds()),
-		HorizonSeconds:  int(f.horizon.Seconds()),
+		StepSeconds:     int(wf.step.Seconds()),
+		HorizonSeconds:  int(wf.horizon.Seconds()),
 		Values:          forecast.Values,
 		DesiredReplicas: desiredReplicas,
+		Quantiles:       forecast.Quantiles,
 	}
 
-	if err := f.store.Put(snapshot); err != nil {
+	if err := wf.store.Put(ctx, snapshot); err != nil {
 		return err
 	}
 
-	f.logger.Debug("stored snapshot", "workload", f.workload)
+	wf.logger.Debug("stored snapshot")
 	return nil
-}
-
-// GetStore returns the underlying store for HTTP handlers.
-func (f *Forecaster) GetStore() storage.Store {
-	return f.store
-}
-
-// GetWorkload returns the workload name.
-func (f *Forecaster) GetWorkload() string {
-	return f.workload
 }

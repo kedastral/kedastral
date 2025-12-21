@@ -36,7 +36,11 @@ forecaster:
     # Server listen address
     listen: ":8081"
 
-    # Workload identification (required)
+    # Multi-workload mode: provide either configFile OR single-workload config below
+    # If configFile is set, single-workload config is ignored
+    configFile: ""  # Path to workloads.yaml (e.g., "/etc/kedastral/workloads.yaml")
+
+    # Single-workload configuration (legacy mode, used only if configFile is empty)
     workload: "my-api"
     metric: "http_rps"
 
@@ -80,6 +84,50 @@ forecaster:
     # Logging
     logLevel: info
     logFormat: text
+
+    # TLS configuration
+    tls:
+      enabled: false
+      # Certificate files (mounted from secrets/cert-manager)
+      certFile: /etc/tls/tls.crt
+      keyFile: /etc/tls/tls.key
+      caFile: /etc/tls/ca.crt
+
+  # Multi-workload ConfigMap
+  # Create a ConfigMap with workloads.yaml for multi-workload mode
+  workloadsConfig:
+    enabled: false
+    # Workloads configuration (workloads.yaml content)
+    # Example:
+    # workloads:
+    #   - name: web-api
+    #     metric: http_rps
+    #     prometheusURL: http://prometheus:9090
+    #     prometheusQuery: sum(rate(http_requests_total{app="web-api"}[1m]))
+    #     horizon: 30m
+    #     step: 1m
+    #     interval: 30s
+    #     window: 1h
+    #     model: baseline
+    #     targetPerPod: 100.0
+    #     headroom: 1.2
+    #     minReplicas: 2
+    #     maxReplicas: 50
+    #     upMaxFactorPerStep: 2.0
+    #     downMaxPercentPerStep: 50
+    workloads: []
+
+  # TLS certificates (for mTLS)
+  tls:
+    # Use cert-manager to provision certificates
+    certManager:
+      enabled: false
+      # Issuer reference
+      issuerName: kedastral-ca-issuer
+      issuerKind: Issuer  # or ClusterIssuer
+    # Use existing secret for certificates
+    existingSecret: ""
+    # If neither certManager nor existingSecret is set, TLS is disabled
 
   # Pod annotations
   podAnnotations: {}
@@ -158,6 +206,26 @@ scaler:
     # Logging
     logLevel: info
     logFormat: text
+
+    # TLS configuration (for mTLS with forecaster)
+    tls:
+      enabled: false
+      # Certificate files (mounted from secrets/cert-manager)
+      certFile: /etc/tls/tls.crt
+      keyFile: /etc/tls/tls.key
+      caFile: /etc/tls/ca.crt
+
+  # TLS certificates (for mTLS with forecaster)
+  tls:
+    # Use cert-manager to provision certificates
+    certManager:
+      enabled: false
+      # Issuer reference
+      issuerName: kedastral-ca-issuer
+      issuerKind: Issuer  # or ClusterIssuer
+    # Use existing secret for certificates
+    existingSecret: ""
+    # If neither certManager nor existingSecret is set, TLS is disabled
 
   # Pod annotations
   podAnnotations: {}

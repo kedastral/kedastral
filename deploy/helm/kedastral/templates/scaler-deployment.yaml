@@ -55,6 +55,16 @@ spec:
           value: {{ .Values.scaler.config.logLevel | quote }}
         - name: LOG_FORMAT
           value: {{ .Values.scaler.config.logFormat | quote }}
+        {{- if or .Values.scaler.tls.certManager.enabled .Values.scaler.tls.existingSecret }}
+        - name: TLS_ENABLED
+          value: "true"
+        - name: TLS_CERT_FILE
+          value: {{ .Values.scaler.config.tls.certFile | quote }}
+        - name: TLS_KEY_FILE
+          value: {{ .Values.scaler.config.tls.keyFile | quote }}
+        - name: TLS_CA_FILE
+          value: {{ .Values.scaler.config.tls.caFile | quote }}
+        {{- end }}
         {{- with .Values.scaler.env }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -83,9 +93,19 @@ spec:
         volumeMounts:
         - name: tmp
           mountPath: /tmp
+        {{- if or .Values.scaler.tls.certManager.enabled .Values.scaler.tls.existingSecret }}
+        - name: tls-certs
+          mountPath: /etc/tls
+          readOnly: true
+        {{- end }}
       volumes:
       - name: tmp
         emptyDir: {}
+      {{- if or .Values.scaler.tls.certManager.enabled .Values.scaler.tls.existingSecret }}
+      - name: tls-certs
+        secret:
+          secretName: {{ if .Values.scaler.tls.existingSecret }}{{ .Values.scaler.tls.existingSecret }}{{- else }}{{ include "kedastral.fullname" . }}-scaler-tls{{- end }}
+      {{- end }}
       {{- with .Values.scaler.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

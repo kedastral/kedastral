@@ -68,7 +68,7 @@ func NewRedisStore(addr, password string, db int, ttl time.Duration) (*RedisStor
 
 // Put stores a forecast snapshot in Redis with TTL-based expiration.
 // The key format is "kedastral:snapshot:{workload}".
-func (r *RedisStore) Put(s Snapshot) error {
+func (r *RedisStore) Put(ctx context.Context, s Snapshot) error {
 	if s.Workload == "" {
 		return errors.New("workload name required")
 	}
@@ -87,9 +87,6 @@ func (r *RedisStore) Put(s Snapshot) error {
 
 	key := fmt.Sprintf("kedastral:snapshot:%s", s.Workload)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
 	if err := r.client.Set(ctx, key, data, r.ttl).Err(); err != nil {
 		return fmt.Errorf("failed to store snapshot in redis: %w", err)
 	}
@@ -103,20 +100,16 @@ func (r *RedisStore) Put(s Snapshot) error {
 //   - snapshot: The forecast snapshot (zero value if not found)
 //   - found: true if snapshot exists, false if not found
 //   - error: non-nil if an error occurred (excluding "not found")
-func (r *RedisStore) GetLatest(workload string) (Snapshot, bool, error) {
+func (r *RedisStore) GetLatest(ctx context.Context, workload string) (Snapshot, bool, error) {
 	if workload == "" {
 		return Snapshot{}, false, errors.New("workload name required")
 	}
 
 	key := fmt.Sprintf("kedastral:snapshot:%s", workload)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
 	data, err := r.client.Get(ctx, key).Bytes()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			// Key doesn't exist or expired - not an error
 			return Snapshot{}, false, nil
 		}
 		return Snapshot{}, false, fmt.Errorf("failed to get snapshot from redis: %w", err)

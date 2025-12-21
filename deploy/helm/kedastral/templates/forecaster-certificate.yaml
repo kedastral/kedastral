@@ -1,0 +1,28 @@
+{{- if and .Values.forecaster.tls.certManager.enabled (not .Values.forecaster.tls.existingSecret) }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "kedastral.fullname" . }}-forecaster-tls
+  labels:
+    {{- include "kedastral.labels" . | nindent 4 }}
+    app.kubernetes.io/component: forecaster
+spec:
+  secretName: {{ include "kedastral.fullname" . }}-forecaster-tls
+  duration: 2160h  # 90 days
+  renewBefore: 360h  # 15 days
+  subject:
+    organizations:
+      - kedastral
+  commonName: {{ include "kedastral.fullname" . }}-forecaster
+  dnsNames:
+    - {{ include "kedastral.fullname" . }}-forecaster
+    - {{ include "kedastral.fullname" . }}-forecaster.{{ .Release.Namespace }}
+    - {{ include "kedastral.fullname" . }}-forecaster.{{ .Release.Namespace }}.svc
+    - {{ include "kedastral.fullname" . }}-forecaster.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    name: {{ .Values.forecaster.tls.certManager.issuerName }}
+    kind: {{ .Values.forecaster.tls.certManager.issuerKind }}
+  usages:
+    - server auth
+    - client auth
+{{- end }}

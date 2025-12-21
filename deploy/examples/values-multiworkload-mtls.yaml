@@ -1,0 +1,102 @@
+# Example Helm values for multi-workload mode with mTLS enabled
+#
+# This configuration demonstrates:
+# - Multiple workloads in a single forecaster
+# - mTLS between scaler and forecaster using cert-manager
+# - Automatic certificate provisioning
+#
+# Prerequisites:
+# - cert-manager installed in the cluster
+#
+# Usage:
+#   helm install kedastral ./deploy/helm/kedastral -f deploy/examples/values-multiworkload-mtls.yaml
+
+forecaster:
+  enabled: true
+
+  # Enable multi-workload ConfigMap
+  workloadsConfig:
+    enabled: true
+    workloads:
+      - name: web-api
+        metric: http_requests_per_second
+        prometheusURL: http://prometheus:9090
+        prometheusQuery: sum(rate(http_requests_total{app="web-api"}[1m]))
+        horizon: 30m
+        step: 1m
+        interval: 30s
+        window: 1h
+        model: baseline
+        targetPerPod: 100.0
+        headroom: 1.2
+        minReplicas: 2
+        maxReplicas: 50
+        upMaxFactorPerStep: 2.0
+        downMaxPercentPerStep: 50
+
+      - name: background-worker
+        metric: queue_depth
+        prometheusURL: http://prometheus:9090
+        prometheusQuery: sum(rabbitmq_queue_messages{queue="tasks"})
+        horizon: 1h
+        step: 5m
+        interval: 1m
+        window: 2h
+        model: baseline
+        targetPerPod: 50.0
+        headroom: 1.5
+        minReplicas: 1
+        maxReplicas: 20
+        upMaxFactorPerStep: 3.0
+        downMaxPercentPerStep: 30
+
+  config:
+    # Point to the ConfigMap-mounted file
+    configFile: "/etc/kedastral/workloads.yaml"
+
+    # Storage backend
+    storage: memory
+
+    # Logging
+    logLevel: info
+    logFormat: json
+
+    # TLS configuration (paths where certs will be mounted)
+    tls:
+      enabled: true
+      certFile: /etc/tls/tls.crt
+      keyFile: /etc/tls/tls.key
+      caFile: /etc/tls/ca.crt
+
+  # Enable cert-manager certificate provisioning
+  tls:
+    certManager:
+      enabled: true
+      issuerName: kedastral-ca-issuer
+      issuerKind: Issuer
+
+scaler:
+  enabled: true
+
+  config:
+    # Use HTTPS URL for mTLS
+    forecasterURL: "https://kedastral-forecaster:8081"
+
+    leadTime: 15m
+
+    logLevel: info
+    logFormat: json
+
+    # TLS configuration
+    tls:
+      enabled: true
+      certFile: /etc/tls/tls.crt
+      keyFile: /etc/tls/tls.key
+      caFile: /etc/tls/ca.crt
+
+  # Enable cert-manager certificate provisioning
+  tls:
+    certManager:
+      enabled: true
+      issuerName: kedastral-ca-issuer
+      issuerKind: Issuer

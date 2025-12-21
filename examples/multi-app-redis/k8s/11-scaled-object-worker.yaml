@@ -1,0 +1,19 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-app-scaledobject
+  namespace: multi-app-redis
+spec:
+  scaleTargetRef:
+    name: worker-app
+    kind: Deployment
+  minReplicaCount: 2
+  maxReplicaCount: 15
+  pollingInterval: 15
+  cooldownPeriod: 60
+  triggers:
+    - type: external
+      metadata:
+        scalerAddress: kedastral-scaler.multi-app-redis:50051
+        workload: worker-app
+        metricName: kedastral-worker-app-desired-replicas

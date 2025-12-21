@@ -50,9 +50,19 @@ func main() {
 		"listen", cfg.Listen,
 		"forecaster_url", cfg.ForecasterURL,
 		"lead_time", cfg.LeadTime,
+		"tls_enabled", cfg.TLS.Enabled,
 	)
 
-	scaler := New(cfg.ForecasterURL, cfg.LeadTime, log, m)
+	if err := cfg.TLS.Validate(); err != nil {
+		log.Error("invalid TLS configuration", "error", err)
+		os.Exit(1)
+	}
+
+	scaler, err := New(cfg.ForecasterURL, cfg.LeadTime, cfg.TLS, log, m)
+	if err != nil {
+		log.Error("failed to create scaler", "error", err)
+		os.Exit(1)
+	}
 
 	grpcServer := grpc.NewServer()
 

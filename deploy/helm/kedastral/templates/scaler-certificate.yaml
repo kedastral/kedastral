@@ -1,0 +1,27 @@
+{{- if and .Values.scaler.tls.certManager.enabled (not .Values.scaler.tls.existingSecret) }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "kedastral.fullname" . }}-scaler-tls
+  labels:
+    {{- include "kedastral.labels" . | nindent 4 }}
+    app.kubernetes.io/component: scaler
+spec:
+  secretName: {{ include "kedastral.fullname" . }}-scaler-tls
+  duration: 2160h  # 90 days
+  renewBefore: 360h  # 15 days
+  subject:
+    organizations:
+      - kedastral
+  commonName: {{ include "kedastral.fullname" . }}-scaler
+  dnsNames:
+    - {{ include "kedastral.fullname" . }}-scaler
+    - {{ include "kedastral.fullname" . }}-scaler.{{ .Release.Namespace }}
+    - {{ include "kedastral.fullname" . }}-scaler.{{ .Release.Namespace }}.svc
+    - {{ include "kedastral.fullname" . }}-scaler.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    name: {{ .Values.scaler.tls.certManager.issuerName }}
+    kind: {{ .Values.scaler.tls.certManager.issuerKind }}
+  usages:
+    - client auth
+{{- end }}

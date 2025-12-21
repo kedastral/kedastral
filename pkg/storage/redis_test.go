@@ -111,7 +111,7 @@ func TestRedisStore_Put_Success(t *testing.T) {
 		DesiredReplicas: []int{5, 5, 6},
 	}
 
-	if err := store.Put(snapshot); err != nil {
+	if err := store.Put(context.Background(), snapshot); err != nil {
 		t.Errorf("Put failed: %v", err)
 	}
 
@@ -140,7 +140,7 @@ func TestRedisStore_Put_EmptyWorkload(t *testing.T) {
 		Metric:   "http_rps",
 	}
 
-	err = store.Put(snapshot)
+	err = store.Put(context.Background(), snapshot)
 	if err == nil {
 		t.Fatal("expected error for empty workload, got nil")
 	}
@@ -163,7 +163,7 @@ func TestRedisStore_Put_InvalidWorkloadName(t *testing.T) {
 		Metric:   "http_rps",
 	}
 
-	err = store.Put(snapshot)
+	err = store.Put(context.Background(), snapshot)
 	if err == nil {
 		t.Fatal("expected error for invalid workload name, got nil")
 	}
@@ -189,12 +189,12 @@ func TestRedisStore_GetLatest_Success(t *testing.T) {
 		DesiredReplicas: []int{5, 5, 6},
 	}
 
-	if err := store.Put(originalSnapshot); err != nil {
+	if err := store.Put(context.Background(), originalSnapshot); err != nil {
 		t.Fatalf("Put failed: %v", err)
 	}
 
 	// Get it back
-	snapshot, found, err := store.GetLatest("test-api")
+	snapshot, found, err := store.GetLatest(context.Background(), "test-api")
 	if err != nil {
 		t.Fatalf("GetLatest failed: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestRedisStore_GetLatest_NotFound(t *testing.T) {
 	}
 	defer store.Close()
 
-	snapshot, found, err := store.GetLatest("nonexistent")
+	snapshot, found, err := store.GetLatest(context.Background(), "nonexistent")
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
@@ -247,7 +247,7 @@ func TestRedisStore_GetLatest_EmptyWorkload(t *testing.T) {
 	}
 	defer store.Close()
 
-	_, found, err := store.GetLatest("")
+	_, found, err := store.GetLatest(context.Background(), "")
 	if err == nil {
 		t.Fatal("expected error for empty workload, got nil")
 	}
@@ -279,12 +279,12 @@ func TestRedisStore_TTL_Expiration(t *testing.T) {
 		DesiredReplicas: []int{5},
 	}
 
-	if err := store.Put(snapshot); err != nil {
+	if err := store.Put(context.Background(), snapshot); err != nil {
 		t.Fatalf("Put failed: %v", err)
 	}
 
 	// Verify it exists immediately
-	_, found, err := store.GetLatest("test-api")
+	_, found, err := store.GetLatest(context.Background(), "test-api")
 	if err != nil {
 		t.Fatalf("GetLatest failed: %v", err)
 	}
@@ -296,7 +296,7 @@ func TestRedisStore_TTL_Expiration(t *testing.T) {
 	time.Sleep(3 * time.Second)
 
 	// Verify it's expired
-	_, found, err = store.GetLatest("test-api")
+	_, found, err = store.GetLatest(context.Background(), "test-api")
 	if err != nil {
 		t.Fatalf("GetLatest failed: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestRedisStore_Concurrency_MultiplePuts(t *testing.T) {
 					DesiredReplicas: []int{j},
 				}
 
-				if err := store.Put(snapshot); err != nil {
+				if err := store.Put(context.Background(), snapshot); err != nil {
 					t.Errorf("Put failed in goroutine %d: %v", goroutineID, err)
 				}
 			}
@@ -348,7 +348,7 @@ func TestRedisStore_Concurrency_MultiplePuts(t *testing.T) {
 	for i := range numGoroutines {
 		for j := range numPutsPerGoroutine {
 			workload := fmt.Sprintf("workload-%d-%d", i, j)
-			_, found, err := store.GetLatest(workload)
+			_, found, err := store.GetLatest(context.Background(), workload)
 			if err != nil {
 				t.Errorf("GetLatest failed for %s: %v", workload, err)
 			}
@@ -379,7 +379,7 @@ func TestRedisStore_Concurrency_ReadWrite(t *testing.T) {
 			Values:          []float64{float64(i)},
 			DesiredReplicas: []int{i},
 		}
-		if err := store.Put(snapshot); err != nil {
+		if err := store.Put(context.Background(), snapshot); err != nil {
 			t.Fatalf("initial Put failed: %v", err)
 		}
 	}
@@ -408,7 +408,7 @@ func TestRedisStore_Concurrency_ReadWrite(t *testing.T) {
 						Values:          []float64{float64(writerID)},
 						DesiredReplicas: []int{writerID},
 					}
-					if err := store.Put(snapshot); err != nil {
+					if err := store.Put(context.Background(), snapshot); err != nil {
 						t.Errorf("Put failed in writer %d: %v", writerID, err)
 					}
 					time.Sleep(10 * time.Millisecond)
@@ -429,7 +429,7 @@ func TestRedisStore_Concurrency_ReadWrite(t *testing.T) {
 					return
 				default:
 					workload := fmt.Sprintf("workload-%d", readerID%5)
-					_, _, err := store.GetLatest(workload)
+					_, _, err := store.GetLatest(context.Background(), workload)
 					if err != nil {
 						t.Errorf("GetLatest failed in reader %d: %v", readerID, err)
 					}
@@ -465,11 +465,11 @@ func TestRedisStore_Serialization_RoundTrip(t *testing.T) {
 		DesiredReplicas: []int{1, 2, 3, 4, 5},
 	}
 
-	if err := store.Put(original); err != nil {
+	if err := store.Put(context.Background(), original); err != nil {
 		t.Fatalf("Put failed: %v", err)
 	}
 
-	retrieved, found, err := store.GetLatest("complex-workload")
+	retrieved, found, err := store.GetLatest(context.Background(), "complex-workload")
 	if err != nil {
 		t.Fatalf("GetLatest failed: %v", err)
 	}

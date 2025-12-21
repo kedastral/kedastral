@@ -3,11 +3,14 @@ package httpx
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
+
+	kedastraltls "github.com/HatiCode/kedastral/pkg/tls"
 )
 
 // Server wraps http.Server with graceful shutdown capabilities.
@@ -37,11 +40,29 @@ func NewServer(addr string, handler http.Handler, logger *slog.Logger) *Server {
 	}
 }
 
+// SetTLSConfig configures the server to use TLS with the provided configuration.
+// Must be called before Start() or StartTLS().
+func (s *Server) SetTLSConfig(config *tls.Config) {
+	s.server.TLSConfig = config
+}
+
 // Start begins serving HTTP requests. This method blocks until the server is stopped.
 // Returns an error if the server fails to start or is stopped ungracefully.
 func (s *Server) Start() error {
 	s.logger.Info("starting HTTP server", "addr", s.server.Addr)
 	err := s.server.ListenAndServe()
+	if err != nil && err != http.ErrServerClosed {
+		return fmt.Errorf("server failed: %w", err)
+	}
+	return nil
+}
+
+// StartTLS begins serving HTTPS requests with the provided cert and key files.
+// This method blocks until the server is stopped.
+// Returns an error if the server fails to start or is stopped ungracefully.
+func (s *Server) StartTLS(certFile, keyFile string) error {
+	s.logger.Info("starting HTTPS server", "addr", s.server.Addr)
+	err := s.server.ListenAndServeTLS(certFile, keyFile)
 	if err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("server failed: %w", err)
 	}
@@ -197,4 +218,32 @@ func RecoveryMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// NewClient creates an HTTP client with optional TLS configuration.
+// If tlsCfg.Enabled is false, a standard HTTP client is created.
+// If tlsCfg.Enabled is true, the client will use mTLS for HTTPS connections.
+func NewClient(tlsCfg kedastraltls.Config, timeout time.Duration) (*http.Client, error) {
+	var cryptoTLSConfig *tls.Config
+	var err error
+
+	if tlsCfg.Enabled {
+		cryptoTLSConfig, err = kedastraltls.NewClientTLSConfig(tlsCfg.CertFile, tlsCfg.KeyFile, tlsCfg.CAFile)
+		if err != nil {
+			return nil, fmt.Errorf("create TLS config: %w", err)
+		}
+	}
+
+	transport := &http.Transport{
+		MaxIdleConns:        10,
+		IdleConnTimeout:     30 * time.Second,
+		DisableKeepAlives:   false,
+		TLSHandshakeTimeout: 5 * time.Second,
+		TLSClientConfig:     cryptoTLSConfig,
+	}
+
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: transport,
+	}, nil
 }

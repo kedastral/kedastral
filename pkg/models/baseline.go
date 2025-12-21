@@ -3,6 +3,7 @@ package models
 import (
 	"context"
 	"fmt"
+	"math"
 )
 
 // BaselineModel implements a predictive forecasting model combining:
@@ -47,14 +48,19 @@ type BaselineModel struct {
 	// hourSeasonality stores hour-of-day patterns (0-23)
 	// Captures daily patterns like business hours vs night
 	hourSeasonality map[int]*seasonalPattern
+
+	// residualStdDev is the standard deviation of forecast errors
+	// Used to compute quantile predictions for uncertainty estimation
+	residualStdDev float64
 }
 
 // seasonalPattern holds statistical summary for a recurring pattern
 type seasonalPattern struct {
-	mean  float64 // average value at this time point
-	max   float64 // maximum observed value
-	min   float64 // minimum observed value
-	count int     // number of observations
+	mean   float64 // average value at this time point
+	max    float64 // maximum observed value
+	min    float64 // minimum observed value
+	count  int     // number of observations
+	stddev float64 // standard deviation of values
 }
 
 // NewBaselineModel creates a new baseline forecasting model.
@@ -86,20 +92,16 @@ func (m *BaselineModel) Train(ctx context.Context, history FeatureFrame) error {
 		return nil
 	}
 
-	// Accumulators for minute-of-hour patterns
 	minuteValues := make(map[int][]float64)
 
-	// Accumulators for hour-of-day patterns
 	hourValues := make(map[int][]float64)
 
-	// Collect all values by their time buckets
 	for _, row := range history.Rows {
 		value, hasValue := row["value"]
 		if !hasValue {
 			continue
 		}
 
-		// Collect minute-of-hour data
 		if minute, hasMinute := row["minute"]; hasMinute {
 			m := int(minute)
 			if m >= 0 && m < 60 {
@@ -107,7 +109,6 @@ func (m *BaselineModel) Train(ctx context.Context, history FeatureFrame) error {
 			}
 		}
 
-		// Collect hour-of-day data
 		if hour, hasHour := row["hour"]; hasHour {
 			h := int(hour)
 			if h >= 0 && h < 24 {
@@ -116,7 +117,6 @@ func (m *BaselineModel) Train(ctx context.Context, history FeatureFrame) error {
 		}
 	}
 
-	// Compute statistics for each minute-of-hour
 	for minute := 0; minute < 60; minute++ {
 		values := minuteValues[minute]
 		if len(values) >= 2 {
@@ -124,11 +124,45 @@ func (m *BaselineModel) Train(ctx context.Context, history FeatureFrame) error {
 		}
 	}
 
-	// Compute statistics for each hour-of-day
 	for hour := 0; hour < 24; hour++ {
 		values := hourValues[hour]
 		if len(values) >= 2 {
 			m.hourSeasonality[hour] = computeSeasonalPattern(values)
+		}
+	}
+
+	// Estimate overall forecast uncertainty from seasonal variation
+	// Compute average standard deviation across all seasonal patterns
+	totalStdDev := 0.0
+	patternCount := 0
+
+	for _, pattern := range m.minuteSeasonality {
+		if pattern != nil && pattern.stddev > 0 {
+			totalStdDev += pattern.stddev
+			patternCount++
+		}
+	}
+
+	for _, pattern := range m.hourSeasonality {
+		if pattern != nil && pattern.stddev > 0 {
+			totalStdDev += pattern.stddev
+			patternCount++
+		}
+	}
+
+	if patternCount > 0 {
+		m.residualStdDev = totalStdDev / float64(patternCount)
+	} else {
+		// Fallback: compute overall stddev from all values
+		allValues := []float64{}
+		for _, vals := range minuteValues {
+			allValues = append(allValues, vals...)
+		}
+		for _, vals := range hourValues {
+			allValues = append(allValues, vals...)
+		}
+		if pattern := computeSeasonalPattern(allValues); pattern != nil {
+			m.residualStdDev = pattern.stddev
 		}
 	}
 
@@ -155,11 +189,26 @@ func computeSeasonalPattern(values []float64) *seasonalPattern {
 		}
 	}
 
+	mean := sum / float64(len(values))
+
+	// Compute standard deviation
+	variance := 0.0
+	for _, v := range values {
+		diff := v - mean
+		variance += diff * diff
+	}
+	stddev := 0.0
+	if len(values) > 1 {
+		variance = variance / float64(len(values)-1)
+		stddev = math.Sqrt(variance)
+	}
+
 	return &seasonalPattern{
-		mean:  sum / float64(len(values)),
-		min:   min,
-		max:   max,
-		count: len(values),
+		mean:   mean,
+		min:    min,
+		max:    max,
+		count:  len(values),
+		stddev: stddev,
 	}
 }
 
@@ -304,11 +353,30 @@ func (m *BaselineModel) Predict(ctx context.Context, features FeatureFrame) (For
 		forecastValues[i] = finalValue
 	}
 
+	quantiles := make(map[float64][]float64)
+	if m.residualStdDev > 0 {
+		quantileLevels := map[float64]float64{
+			0.50: 0.0,
+			0.75: 0.674,
+			0.90: 1.282,
+			0.95: 1.645,
+		}
+
+		for q, z := range quantileLevels {
+			qValues := make([]float64, len(forecastValues))
+			for i, v := range forecastValues {
+				qValues[i] = math.Max(0, v+z*m.residualStdDev)
+			}
+			quantiles[q] = qValues
+		}
+	}
+
 	return Forecast{
-		Metric:  m.metric,
-		Values:  forecastValues,
-		StepSec: m.stepSec,
-		Horizon: m.horizon,
+		Metric:    m.metric,
+		Values:    forecastValues,
+		StepSec:   m.stepSec,
+		Horizon:   m.horizon,
+		Quantiles: quantiles,
 	}, nil
 }
 

@@ -44,6 +44,10 @@ spec:
         env:
         - name: LISTEN
           value: {{ .Values.forecaster.config.listen | quote }}
+        {{- if .Values.forecaster.workloadsConfig.enabled }}
+        - name: CONFIG_FILE
+          value: "/etc/kedastral/workloads.yaml"
+        {{- else }}
         - name: WORKLOAD
           value: {{ .Values.forecaster.config.workload | quote }}
         - name: METRIC
@@ -98,6 +102,17 @@ spec:
           value: {{ .Values.forecaster.config.logLevel | quote }}
         - name: LOG_FORMAT
           value: {{ .Values.forecaster.config.logFormat | quote }}
+        {{- end }}
+        {{- if or .Values.forecaster.tls.certManager.enabled .Values.forecaster.tls.existingSecret }}
+        - name: TLS_ENABLED
+          value: "true"
+        - name: TLS_CERT_FILE
+          value: {{ .Values.forecaster.config.tls.certFile | quote }}
+        - name: TLS_KEY_FILE
+          value: {{ .Values.forecaster.config.tls.keyFile | quote }}
+        - name: TLS_CA_FILE
+          value: {{ .Values.forecaster.config.tls.caFile | quote }}
+        {{- end }}
         {{- with .Values.forecaster.env }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -126,9 +141,29 @@ spec:
         volumeMounts:
         - name: tmp
           mountPath: /tmp
+        {{- if .Values.forecaster.workloadsConfig.enabled }}
+        - name: workloads-config
+          mountPath: /etc/kedastral
+          readOnly: true
+        {{- end }}
+        {{- if or .Values.forecaster.tls.certManager.enabled .Values.forecaster.tls.existingSecret }}
+        - name: tls-certs
+          mountPath: /etc/tls
+          readOnly: true
+        {{- end }}
       volumes:
       - name: tmp
         emptyDir: {}
+      {{- if .Values.forecaster.workloadsConfig.enabled }}
+      - name: workloads-config
+        configMap:
+          name: {{ include "kedastral.fullname" . }}-workloads
+      {{- end }}
+      {{- if or .Values.forecaster.tls.certManager.enabled .Values.forecaster.tls.existingSecret }}
+      - name: tls-certs
+        secret:
+          secretName: {{ if .Values.forecaster.tls.existingSecret }}{{ .Values.forecaster.tls.existingSecret }}{{- else }}{{ include "kedastral.fullname" . }}-forecaster-tls{{- end }}
+      {{- end }}
       {{- with .Values.forecaster.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

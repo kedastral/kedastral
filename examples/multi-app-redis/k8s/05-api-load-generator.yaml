@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-load-generator
+  namespace: multi-app-redis
+  labels:
+    app: api-load-generator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-load-generator
+  template:
+    metadata:
+      labels:
+        app: api-load-generator
+    spec:
+      containers:
+        - name: load-generator
+          image: load-generator:latest
+          imagePullPolicy: Never
+          env:
+            - name: TARGET_URL
+              value: "http://api-app:8080"
+            - name: PATTERN
+              value: "hourly-spike"
+            - name: BASE_RPS
+              value: "30"
+            - name: PEAK_RPS
+              value: "150"
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"

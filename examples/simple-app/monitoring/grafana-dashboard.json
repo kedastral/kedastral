@@ -1,0 +1,280 @@
+{
+  "title": "Kedastral Test App - Predictive Autoscaling",
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 0,
+  "refresh": "10s",
+  "panels": [
+      {
+        "title": "Request Rate (Actual vs Predicted)",
+        "type": "graph",
+        "gridPos": {
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 8
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(api_requests_total{namespace=\"simple-app\"}[1m]))",
+            "legendFormat": "Actual RPS",
+            "refId": "A"
+          },
+          {
+            "expr": "kedastral_predicted_value{workload=\"simple-app\"}",
+            "legendFormat": "Predicted RPS (5m ahead)",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          {
+            "label": "Requests/sec",
+            "show": true
+          },
+          {
+            "show": true
+          }
+        ],
+        "xaxis": {
+          "show": true
+        },
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2
+      },
+      {
+        "title": "Replicas (Actual vs Desired)",
+        "type": "graph",
+        "gridPos": {
+          "x": 12,
+          "y": 0,
+          "w": 12,
+          "h": 8
+        },
+        "targets": [
+          {
+            "expr": "count(kube_pod_info{namespace=\"simple-app\", pod=~\"simple-app-.*\", created_by_kind=\"ReplicaSet\"})",
+            "legendFormat": "Actual Replicas",
+            "refId": "A"
+          },
+          {
+            "expr": "kedastral_desired_replicas{workload=\"simple-app\"}",
+            "legendFormat": "Forecaster Prediction (current)",
+            "refId": "B"
+          },
+          {
+            "expr": "kedastral_scaler_desired_replicas_returned",
+            "legendFormat": "Scaler Recommendation (proactive)",
+            "refId": "C"
+          },
+          {
+            "expr": "kube_horizontalpodautoscaler_status_desired_replicas{horizontalpodautoscaler=~\"keda-hpa-.*\", namespace=\"simple-app\"}",
+            "legendFormat": "HPA Target (KEDA)",
+            "refId": "D"
+          }
+        ],
+        "yaxes": [
+          {
+            "label": "Replicas",
+            "show": true,
+            "min": 0
+          },
+          {
+            "show": true
+          }
+        ],
+        "xaxis": {
+          "show": true
+        },
+        "lines": true,
+        "linewidth": 2,
+        "steppedLine": true
+      },
+      {
+        "title": "Pod Status",
+        "type": "graph",
+        "gridPos": {
+          "x": 0,
+          "y": 8,
+          "w": 12,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "sum(kube_pod_status_phase{namespace=\"simple-app\", pod=~\"simple-app-.*\", phase=\"Running\"})",
+            "legendFormat": "Running",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(kube_pod_status_phase{namespace=\"simple-app\", pod=~\"simple-app-.*\", phase=\"Pending\"})",
+            "legendFormat": "Pending",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          {
+            "label": "Pods",
+            "show": true,
+            "min": 0
+          },
+          {
+            "show": true
+          }
+        ],
+        "stack": true,
+        "fill": 5
+      },
+      {
+        "title": "Forecast Health",
+        "type": "singlestat",
+        "gridPos": {
+          "x": 12,
+          "y": 8,
+          "w": 4,
+          "h": 3
+        },
+        "targets": [
+          {
+            "expr": "kedastral_forecast_age_seconds{workload=\"simple-app\"}",
+            "refId": "A"
+          }
+        ],
+        "format": "s",
+        "valueName": "current",
+        "thresholds": "60,300",
+        "colors": [
+          "green",
+          "yellow",
+          "red"
+        ],
+        "colorBackground": true
+      },
+      {
+        "title": "Request Duration (p99)",
+        "type": "graph",
+        "gridPos": {
+          "x": 0,
+          "y": 14,
+          "w": 12,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(api_request_duration_seconds_bucket{namespace=\"simple-app\"}[1m])) by (le, endpoint))",
+            "legendFormat": "{{endpoint}} p99",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {
+            "label": "Duration",
+            "format": "s",
+            "show": true
+          },
+          {
+            "show": true
+          }
+        ],
+        "lines": true,
+        "linewidth": 2
+      },
+      {
+        "title": "Active Connections",
+        "type": "graph",
+        "gridPos": {
+          "x": 12,
+          "y": 14,
+          "w": 12,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "sum(api_active_connections{namespace=\"simple-app\"})",
+            "legendFormat": "Active Connections",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {
+            "label": "Connections",
+            "show": true,
+            "min": 0
+          },
+          {
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 2
+      },
+      {
+        "title": "Kedastral Forecaster Performance",
+        "type": "graph",
+        "gridPos": {
+          "x": 0,
+          "y": 20,
+          "w": 12,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "rate(kedastral_adapter_collect_seconds_sum{workload=\"simple-app\"}[1m]) / rate(kedastral_adapter_collect_seconds_count{workload=\"simple-app\"}[1m])",
+            "legendFormat": "Prometheus Query",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(kedastral_model_predict_seconds_sum{workload=\"simple-app\"}[1m]) / rate(kedastral_model_predict_seconds_count{workload=\"simple-app\"}[1m])",
+            "legendFormat": "Model Prediction",
+            "refId": "B"
+          },
+          {
+            "expr": "rate(kedastral_capacity_compute_seconds_sum{workload=\"simple-app\"}[1m]) / rate(kedastral_capacity_compute_seconds_count{workload=\"simple-app\"}[1m])",
+            "legendFormat": "Capacity Planning",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          {
+            "label": "Duration",
+            "format": "s",
+            "show": true
+          },
+          {
+            "show": true
+          }
+        ],
+        "lines": true,
+        "linewidth": 2
+      },
+      {
+        "title": "CPU Usage by Pod",
+        "type": "graph",
+        "gridPos": {
+          "x": 12,
+          "y": 20,
+          "w": 12,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"simple-app\", pod=~\"simple-app-.*\"}[1m])) by (pod)",
+            "legendFormat": "{{pod}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {
+            "label": "CPU cores",
+            "show": true,
+            "min": 0
+          },
+          {
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "stack": false
+      }
+    ]
+}

@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -107,7 +108,7 @@ func TestGetSnapshot_Success(t *testing.T) {
 		Values:          []float64{100, 110, 120},
 		DesiredReplicas: []int{2, 3, 3},
 	}
-	err := store.Put(snapshot)
+	err := store.Put(context.Background(), snapshot)
 	if err != nil {
 		t.Fatalf("failed to put snapshot: %v", err)
 	}
@@ -150,7 +151,7 @@ func TestGetSnapshot_Stale(t *testing.T) {
 		Values:          []float64{100, 110, 120},
 		DesiredReplicas: []int{2, 3, 3},
 	}
-	err := store.Put(snapshot)
+	err := store.Put(context.Background(), snapshot)
 	if err != nil {
 		t.Fatalf("failed to put snapshot: %v", err)
 	}
@@ -187,7 +188,7 @@ func TestGetSnapshot_JSONResponse(t *testing.T) {
 		Values:          []float64{100, 110, 120},
 		DesiredReplicas: []int{2, 3, 3},
 	}
-	if err := store.Put(snapshot); err != nil {
+	if err := store.Put(context.Background(), snapshot); err != nil {
 		t.Fatalf("failed to put snapshot: %v", err)
 	}
 

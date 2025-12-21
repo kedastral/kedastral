@@ -5,6 +5,125 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2025-12-21
+
+### Added
+
+- **Multi-Workload Forecasting**: Single forecaster instance can now manage multiple workloads concurrently
+  - New YAML-based configuration file for defining multiple workloads (`--config-file` flag)
+  - Concurrent workload processing with per-workload isolation and panic recovery
+  - Per-operation timeouts: collect (10s), train (5s), predict (2s), store (2s)
+  - `WorkloadForecaster` and `MultiForecaster` types for clean separation of concerns
+  - Example workloads configuration files in `deploy/examples/`
+- **mTLS Security**: Mutual TLS authentication between scaler and forecaster
+  - New `pkg/tls` package providing client and server TLS configuration
+  - TLS 1.3 with strong cipher suites (TLS_AES_256_GCM_SHA384, TLS_AES_128_GCM_SHA256)
+  - Client certificate verification (RequireAndVerifyClientCert)
+  - Forecaster HTTP server supports mTLS (`--tls-enabled`, `--tls-cert-file`, `--tls-key-file`, `--tls-ca-file`)
+  - Scaler HTTP client supports mTLS with same configuration flags
+  - Integration with httpx package for unified HTTP client creation
+- **Enhanced Configuration Validation**: Security-focused input validation
+  - Workload name regex validation (DNS-compatible, 1-253 chars)
+  - Context-based timeouts for all storage operations (2s default)
+  - ConfigMap input validation in router with injection attack prevention
+  - Comprehensive validation in `LoadWorkloads()` with detailed error messages
+- **Helm Chart Enhancements**: Support for multi-workload and mTLS deployments
+  - ConfigMap template for workloads configuration (`forecaster-configmap.yaml`)
+  - cert-manager Certificate resources for automatic certificate provisioning
+  - CA Issuer template for self-signed development certificates
+  - TLS volume mounts in both forecaster and scaler deployments
+  - Example values file for multi-workload mTLS setup (`values-multiworkload-mtls.yaml`)
+  - Backward-compatible with single-workload mode
+- **Quantile Forecasting**: Uncertainty-aware predictions with automatic quantile generation
+  - Baseline model computes quantiles (p50, p75, p90, p95) from seasonal variance
+  - ARIMA model computes quantiles from residual standard deviation with horizon-adjusted uncertainty
+  - Quantiles automatically included in forecast snapshots (backward compatible)
+  - Models generate 4 quantile levels using standard normal z-scores
+- **Quantile-Based Capacity Planning**: Use forecast quantiles instead of fixed headroom multiplier
+  - New `--quantile-level` flag for enabling quantile-based scaling (p90, p95, or 0.90, 0.95)
+  - Intelligent fallback: uses quantile when available, headroom otherwise (opt-in design)
+  - Per-workload configuration via YAML `quantileLevel` field or command-line flag
+  - Policy struct extended with `QuantileLevel` field
+- **p-Notation Support**: Industry-standard percentile notation for better UX
+  - Automatic parsing of both p-notation (p90, p95) and decimal (0.90, 0.95) formats
+  - User-friendly display in logs showing p-notation (e.g., "quantile-based capacity planning enabled, quantile=p90")
+  - Helper functions: `capacity.ParseQuantileLevel()` and `capacity.FormatQuantileLevel()`
+  - Validation of input ranges (percentile 0-100, quantile 0-1)
+
+### Changed
+
+- **Forecaster Architecture**: Refactored from single-workload to multi-workload design
+  - `Forecaster` type renamed to `WorkloadForecaster` for clarity
+  - Added `MultiForecaster` to coordinate multiple workload forecasters
+  - Forecast loop now runs per-workload with independent goroutines
+  - Interval parameter moved from `Run()` method to struct configuration
+- **Storage Interface**: All methods now accept `context.Context` as first parameter
+  - `Put(ctx context.Context, snapshot Snapshot) error`
+  - `GetLatest(ctx context.Context, workload string) (Snapshot, bool, error)`
+  - Updated memory and Redis implementations
+  - All storage tests updated for context propagation
+- **Scaler Constructor**: Now returns `(*Scaler, error)` to handle TLS initialization errors
+  - TLS configuration passed as `tls.Config` parameter
+  - HTTP client creation delegated to `httpx.NewClient()`
+- **httpx Package**: Extended with TLS support
+  - `SetTLSConfig(*tls.Config)` method for server TLS configuration
+  - `StartTLS(certFile, keyFile string)` method for HTTPS server
+  - `NewClient(tls.Config, timeout)` accepts custom TLS config (returns error)
+  - Package remains independent of custom tls package (uses crypto/tls)
+- **Forecast Model Interface**: Extended to support optional quantile predictions
+  - `Forecast` struct now includes `Quantiles map[float64][]float64` field
+  - Backward compatible: quantiles are optional, models work without them
+  - Point forecast (Values) remains primary prediction, quantiles provide uncertainty bounds
+- **Capacity Planner**: Signature updated to accept quantiles parameter
+  - `ToReplicas()` now accepts `quantiles map[float64][]float64` as optional parameter
+  - When `Policy.QuantileLevel > 0` and quantiles available, uses specified quantile directly
+  - Otherwise falls back to point forecast × headroom (existing behavior)
+  - All existing tests updated to pass `nil` for quantiles (backward compatibility)
+- **Storage Snapshots**: Now include quantiles for transparency
+  - `Snapshot` struct extended with `Quantiles` field (JSON tag: `omitempty`)
+  - Forecaster automatically stores quantiles when available
+  - Scaler can access quantiles from Redis/memory for analysis
+- **Config Structs**: Added `QuantileLevel` field to Config and WorkloadConfig
+  - Accepts both p-notation strings ("p90") and decimal strings ("0.90")
+  - Default value "0" disables quantile-based planning (uses headroom)
+  - Environment variable support: `QUANTILE_LEVEL`
+
+### Security
+
+- Implemented mutual TLS (mTLS) authentication between all components
+- Added comprehensive input validation with DNS-compatible regex for workload names
+- Per-operation timeout enforcement to prevent resource exhaustion
+- Context-based cancellation support throughout storage layer
+- TLS certificate validation with custom CA support
+- Secure defaults: TLS 1.3 minimum, strong cipher suites only
+
+### Fixed
+
+- All forecaster tests updated for new `WorkloadForecaster` API
+- All scaler tests updated for new constructor signature with TLS parameter
+- Router tests updated for context-based storage operations
+- Fixed workload field references (`workload` → `name`) in test structs
+- Removed obsolete `GetStore()` and `GetWorkload()` test functions
+
+### Documentation
+
+- Created comprehensive workloads YAML examples (`workloads.yaml`, `workloads-documented.yaml`)
+- Added Helm values example for multi-workload mTLS deployment
+- Updated package documentation for new architecture
+- Added detailed comments explaining TLS configuration options
+- **Quantile Forecasting Guide**: New comprehensive documentation in `docs/planner/quantile-forecasting.md`
+  - Detailed explanation of quantile vs headroom approaches
+  - Configuration examples with both p-notation and decimal formats
+  - Migration guide for existing deployments
+  - Comparison scenarios showing adaptive vs fixed buffers
+  - Advantages, limitations, and future enhancements
+
+### Performance
+
+- Concurrent workload processing improves throughput for multi-workload deployments
+- Per-workload panic recovery prevents cascading failures
+- Independent goroutines eliminate cross-workload blocking
+
 ## [0.1.3] - 2025-12-21
 
 ### Added
@@ -150,6 +269,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Kubernetes deployment examples
 - Documentation and getting started guide
 
+[0.1.4]: https://github.com/kedastral/kedastral/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/kedastral/kedastral/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/kedastral/kedastral/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/kedastral/kedastral/compare/v0.1.0...v0.1.1

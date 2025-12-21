@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -62,7 +63,7 @@ func TestMemoryStore_Put_Get(t *testing.T) {
 			store := NewMemoryStore()
 
 			// Test Put
-			err := store.Put(tt.snapshot)
+			err := store.Put(context.Background(), tt.snapshot)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Put() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -73,7 +74,7 @@ func TestMemoryStore_Put_Get(t *testing.T) {
 			}
 
 			// Test GetLatest
-			got, found, err := store.GetLatest(tt.snapshot.Workload)
+			got, found, err := store.GetLatest(context.Background(), tt.snapshot.Workload)
 			if err != nil {
 				t.Errorf("GetLatest() unexpected error = %v", err)
 				return
@@ -104,7 +105,7 @@ func TestMemoryStore_Put_Get(t *testing.T) {
 func TestMemoryStore_GetLatest_NotFound(t *testing.T) {
 	store := NewMemoryStore()
 
-	snapshot, found, err := store.GetLatest("nonexistent")
+	snapshot, found, err := store.GetLatest(context.Background(), "nonexistent")
 	if err != nil {
 		t.Errorf("GetLatest() unexpected error = %v", err)
 	}
@@ -127,7 +128,7 @@ func TestMemoryStore_Put_Update(t *testing.T) {
 		GeneratedAt:     time.Now(),
 		DesiredReplicas: []int{2, 3, 3},
 	}
-	if err := store.Put(snapshot1); err != nil {
+	if err := store.Put(context.Background(), snapshot1); err != nil {
 		t.Fatalf("Put() first snapshot error = %v", err)
 	}
 
@@ -138,12 +139,12 @@ func TestMemoryStore_Put_Update(t *testing.T) {
 		GeneratedAt:     time.Now().Add(time.Minute),
 		DesiredReplicas: []int{5, 6, 7},
 	}
-	if err := store.Put(snapshot2); err != nil {
+	if err := store.Put(context.Background(), snapshot2); err != nil {
 		t.Fatalf("Put() second snapshot error = %v", err)
 	}
 
 	// Verify only the latest snapshot is stored
-	got, found, err := store.GetLatest(workload)
+	got, found, err := store.GetLatest(context.Background(), workload)
 	if err != nil {
 		t.Fatalf("GetLatest() error = %v", err)
 	}
@@ -172,7 +173,7 @@ func TestMemoryStore_MultipleWorkloads(t *testing.T) {
 			Metric:          "http_rps",
 			DesiredReplicas: []int{2},
 		}
-		if err := store.Put(snapshot); err != nil {
+		if err := store.Put(context.Background(), snapshot); err != nil {
 			t.Fatalf("Put(%s) error = %v", workload, err)
 		}
 	}
@@ -184,7 +185,7 @@ func TestMemoryStore_MultipleWorkloads(t *testing.T) {
 
 	// Verify each can be retrieved
 	for _, workload := range workloads {
-		got, found, err := store.GetLatest(workload)
+		got, found, err := store.GetLatest(context.Background(), workload)
 		if err != nil {
 			t.Errorf("GetLatest(%s) error = %v", workload, err)
 		}
@@ -219,7 +220,7 @@ func TestMemoryStore_Concurrent(t *testing.T) {
 					GeneratedAt:     time.Now(),
 					DesiredReplicas: []int{id, j},
 				}
-				if err := store.Put(snapshot); err != nil {
+				if err := store.Put(context.Background(), snapshot); err != nil {
 					t.Errorf("Concurrent Put() error = %v", err)
 				}
 			}
@@ -232,7 +233,7 @@ func TestMemoryStore_Concurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range numOperations {
-				_, _, err := store.GetLatest(workload)
+				_, _, err := store.GetLatest(context.Background(), workload)
 				if err != nil {
 					t.Errorf("Concurrent GetLatest() error = %v", err)
 				}
@@ -243,7 +244,7 @@ func TestMemoryStore_Concurrent(t *testing.T) {
 	wg.Wait()
 
 	// Verify store is still consistent
-	snapshot, found, err := store.GetLatest(workload)
+	snapshot, found, err := store.GetLatest(context.Background(), workload)
 	if err != nil {
 		t.Errorf("Final GetLatest() error = %v", err)
 	}
@@ -276,7 +277,7 @@ func TestMemoryStore_ConcurrentMultipleWorkloads(t *testing.T) {
 					GeneratedAt:     time.Now(),
 					DesiredReplicas: []int{i},
 				}
-				if err := store.Put(snapshot); err != nil {
+				if err := store.Put(context.Background(), snapshot); err != nil {
 					t.Errorf("Put(%s) error = %v", w, err)
 				}
 			}
@@ -291,7 +292,7 @@ func TestMemoryStore_ConcurrentMultipleWorkloads(t *testing.T) {
 	}
 
 	for _, workload := range workloads {
-		snapshot, found, err := store.GetLatest(workload)
+		snapshot, found, err := store.GetLatest(context.Background(), workload)
 		if err != nil {
 			t.Errorf("GetLatest(%s) error = %v", workload, err)
 		}
@@ -312,7 +313,7 @@ func TestMemoryStore_Delete(t *testing.T) {
 		Workload: "delete-test",
 		Metric:   "http_rps",
 	}
-	if err := store.Put(snapshot); err != nil {
+	if err := store.Put(context.Background(), snapshot); err != nil {
 		t.Fatalf("Put() error = %v", err)
 	}
 
@@ -323,7 +324,7 @@ func TestMemoryStore_Delete(t *testing.T) {
 	}
 
 	// Verify it's gone
-	_, found, _ := store.GetLatest("delete-test")
+	_, found, _ := store.GetLatest(context.Background(), "delete-test")
 	if found {
 		t.Error("GetLatest() found = true after delete, want false")
 	}
@@ -352,7 +353,7 @@ func TestMemoryStore_Len(t *testing.T) {
 			Workload: string(rune('a' + i - 1)),
 			Metric:   "test",
 		}
-		if err := store.Put(snapshot); err != nil {
+		if err := store.Put(context.Background(), snapshot); err != nil {
 			t.Fatalf("Put() error = %v", err)
 		}
 
@@ -374,12 +375,12 @@ func TestMemoryStoreWithTTL_Expiration(t *testing.T) {
 		GeneratedAt: time.Now(),
 		Metric:      "http_rps",
 	}
-	if err := store.Put(snapshot); err != nil {
+	if err := store.Put(context.Background(), snapshot); err != nil {
 		t.Fatalf("Put() error = %v", err)
 	}
 
 	// Verify it exists
-	_, found, _ := store.GetLatest("ttl-test")
+	_, found, _ := store.GetLatest(context.Background(), "ttl-test")
 	if !found {
 		t.Fatal("Snapshot should exist immediately after Put")
 	}
@@ -388,7 +389,7 @@ func TestMemoryStoreWithTTL_Expiration(t *testing.T) {
 	time.Sleep(ttl + cleanupInterval + 50*time.Millisecond)
 
 	// Verify it's been cleaned up
-	_, found, _ = store.GetLatest("ttl-test")
+	_, found, _ = store.GetLatest(context.Background(), "ttl-test")
 	if found {
 		t.Error("Snapshot should be removed after TTL expiration")
 	}
@@ -410,7 +411,7 @@ func TestMemoryStoreWithTTL_MultipleSnapshots(t *testing.T) {
 		GeneratedAt: time.Now().Add(-300 * time.Millisecond), // Already expired
 		Metric:      "http_rps",
 	}
-	if err := store.Put(oldSnapshot); err != nil {
+	if err := store.Put(context.Background(), oldSnapshot); err != nil {
 		t.Fatalf("Put(oldSnapshot) error = %v", err)
 	}
 
@@ -420,7 +421,7 @@ func TestMemoryStoreWithTTL_MultipleSnapshots(t *testing.T) {
 		GeneratedAt: time.Now(),
 		Metric:      "http_rps",
 	}
-	if err := store.Put(freshSnapshot); err != nil {
+	if err := store.Put(context.Background(), freshSnapshot); err != nil {
 		t.Fatalf("Put(freshSnapshot) error = %v", err)
 	}
 
@@ -428,13 +429,13 @@ func TestMemoryStoreWithTTL_MultipleSnapshots(t *testing.T) {
 	time.Sleep(cleanupInterval + 50*time.Millisecond)
 
 	// Old should be gone
-	_, found, _ := store.GetLatest("old")
+	_, found, _ := store.GetLatest(context.Background(), "old")
 	if found {
 		t.Error("Old snapshot should be removed")
 	}
 
 	// Fresh should remain
-	_, found, _ = store.GetLatest("fresh")
+	_, found, _ = store.GetLatest(context.Background(), "fresh")
 	if !found {
 		t.Error("Fresh snapshot should still exist")
 	}
@@ -448,7 +449,7 @@ func TestMemoryStoreWithTTL_Stop(t *testing.T) {
 	store := NewMemoryStoreWithTTL(time.Minute, time.Second)
 
 	// Add a snapshot
-	if err := store.Put(Snapshot{
+	if err := store.Put(context.Background(), Snapshot{
 		Workload:    "test",
 		GeneratedAt: time.Now(),
 	}); err != nil {
@@ -480,7 +481,7 @@ func TestMemoryStore_StopWithoutTTL(t *testing.T) {
 	store.Stop()
 
 	// Should still be usable after Stop
-	err := store.Put(Snapshot{
+	err := store.Put(context.Background(), Snapshot{
 		Workload: "test",
 	})
 	if err != nil {
@@ -517,7 +518,7 @@ func TestMemoryStoreWithTTL_UpdateResetsTTL(t *testing.T) {
 	workload := "update-ttl-test"
 
 	// Add initial snapshot with old timestamp (will expire)
-	if err := store.Put(Snapshot{
+	if err := store.Put(context.Background(), Snapshot{
 		Workload:        workload,
 		GeneratedAt:     time.Now().Add(-250 * time.Millisecond),
 		DesiredReplicas: []int{1},
@@ -529,7 +530,7 @@ func TestMemoryStoreWithTTL_UpdateResetsTTL(t *testing.T) {
 	time.Sleep(cleanupInterval + 20*time.Millisecond)
 
 	// Update snapshot with fresh timestamp
-	if err := store.Put(Snapshot{
+	if err := store.Put(context.Background(), Snapshot{
 		Workload:        workload,
 		GeneratedAt:     time.Now(),
 		DesiredReplicas: []int{2},
@@ -541,7 +542,7 @@ func TestMemoryStoreWithTTL_UpdateResetsTTL(t *testing.T) {
 	time.Sleep(cleanupInterval + 20*time.Millisecond)
 
 	// Should still exist because we updated it with a fresh timestamp
-	snapshot, found, _ := store.GetLatest(workload)
+	snapshot, found, _ := store.GetLatest(context.Background(), workload)
 	if !found {
 		t.Error("Updated snapshot should still exist")
 	}
@@ -568,7 +569,7 @@ func TestMemoryStoreWithTTL_ConcurrentWithCleanup(t *testing.T) {
 
 			for range 20 {
 				// Put fresh snapshots
-				if err := store.Put(Snapshot{
+				if err := store.Put(context.Background(), Snapshot{
 					Workload:    workload,
 					GeneratedAt: time.Now(),
 					Metric:      "test",
@@ -577,7 +578,7 @@ func TestMemoryStoreWithTTL_ConcurrentWithCleanup(t *testing.T) {
 				}
 
 				// Read
-				if _, _, err := store.GetLatest(workload); err != nil {
+				if _, _, err := store.GetLatest(context.Background(), workload); err != nil {
 					t.Errorf("GetLatest(%s) error = %v", workload, err)
 				}
 
@@ -602,7 +603,7 @@ func BenchmarkMemoryStore_ConcurrentAccess(b *testing.B) {
 
 	// Pre-populate
 	for _, w := range workloads {
-		if err := store.Put(Snapshot{
+		if err := store.Put(context.Background(), Snapshot{
 			Workload:        w,
 			DesiredReplicas: []int{1, 2, 3},
 		}); err != nil {
@@ -617,7 +618,7 @@ func BenchmarkMemoryStore_ConcurrentAccess(b *testing.B) {
 			workload := workloads[i%len(workloads)]
 			if i%2 == 0 {
 				// Write
-				if err := store.Put(Snapshot{
+				if err := store.Put(context.Background(), Snapshot{
 					Workload:        workload,
 					DesiredReplicas: []int{i},
 				}); err != nil {
@@ -626,7 +627,7 @@ func BenchmarkMemoryStore_ConcurrentAccess(b *testing.B) {
 				}
 			} else {
 				// Read
-				if _, _, err := store.GetLatest(workload); err != nil {
+				if _, _, err := store.GetLatest(context.Background(), workload); err != nil {
 					// Ignore errors in benchmark
 					_ = err
 				}

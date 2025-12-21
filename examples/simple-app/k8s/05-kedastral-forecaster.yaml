@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kedastral-forecaster
+  namespace: simple-app
+  labels:
+    app: kedastral-forecaster
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kedastral-forecaster
+  template:
+    metadata:
+      labels:
+        app: kedastral-forecaster
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: forecaster
+          image: kedastral-forecaster:v2
+          imagePullPolicy: Never # For local minikube images
+          args:
+            - -workload=simple-app
+            - -metric=rps
+            - -prom-url=http://prometheus-operated.monitoring:9090
+            - -prom-query=sum(rate(api_requests_total{namespace="simple-app"}[1m]))
+            - -target-per-pod=50
+            - -headroom=1.2
+            - -min=2
+            - -max=20
+            - -horizon=30m
+            - -step=1m
+            - -interval=30s
+            - -window=3h
+            - -model=baseline
+            - -storage=memory
+          ports:
+            - containerPort: 8081
+              name: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kedastral-forecaster
+  namespace: simple-app
+  labels:
+    app: kedastral-forecaster
+spec:
+  selector:
+    app: kedastral-forecaster
+  ports:
+    - port: 8081
+      targetPort: 8081
+      name: http
+  type: ClusterIP
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kedastral-forecaster
+  namespace: simple-app
+  labels:
+    app: kedastral-forecaster
+spec:
+  selector:
+    matchLabels:
+      app: kedastral-forecaster
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

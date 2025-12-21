@@ -1,0 +1,12 @@
+{{- if .Values.forecaster.workloadsConfig.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kedastral.fullname" . }}-workloads
+  labels:
+    {{- include "kedastral.labels" . | nindent 4 }}
+    app.kubernetes.io/component: forecaster
+data:
+  workloads.yaml: |
+    {{- .Values.forecaster.workloadsConfig | toYaml | nindent 4 }}
+{{- end }}

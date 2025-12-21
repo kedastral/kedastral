@@ -16,9 +16,11 @@
 package router
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -26,6 +28,8 @@ import (
 	"github.com/HatiCode/kedastral/pkg/httpx"
 	"github.com/HatiCode/kedastral/pkg/storage"
 )
+
+var workloadNameRegex = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,251}[a-zA-Z0-9])?$`)
 
 // SetupRoutes configures HTTP endpoints for the forecaster.
 func SetupRoutes(store storage.Store, staleAfter time.Duration, logger *slog.Logger) *http.ServeMux {
@@ -52,7 +56,15 @@ func handleGetSnapshot(store storage.Store, staleAfter time.Duration, logger *sl
 			return
 		}
 
-		snapshot, found, err := store.GetLatest(workload)
+		if !workloadNameRegex.MatchString(workload) {
+			httpx.WriteErrorMessage(w, http.StatusBadRequest, "invalid workload name format")
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		snapshot, found, err := store.GetLatest(ctx, workload)
 		if err != nil {
 			logger.Error("failed to get snapshot", "workload", workload, "error", err)
 			httpx.WriteErrorMessage(w, http.StatusInternalServerError, "internal server error")
@@ -64,12 +76,10 @@ func handleGetSnapshot(store storage.Store, staleAfter time.Duration, logger *sl
 			return
 		}
 
-		// Check if stale per SPEC.md §3.1
 		if time.Since(snapshot.GeneratedAt) > staleAfter {
 			w.Header().Set("X-Kedastral-Stale", "true")
 		}
 
-		// Convert to API response format
 		resp := map[string]any{
 			"workload":        snapshot.Workload,
 			"metric":          snapshot.Metric,

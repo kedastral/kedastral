@@ -31,11 +31,15 @@ type FeatureFrame struct {
 // over the forecast horizon (Horizon seconds).
 //
 // The length of Values should be: len(Values) = Horizon / StepSec
+//
+// Models may optionally provide quantile predictions (Quantiles) to represent
+// forecast uncertainty. When quantiles are available, the capacity planner
+// can use them directly instead of applying a headroom multiplier.
 type Forecast struct {
 	// Metric is the name of the metric being forecast (e.g., "http_rps")
 	Metric string
 
-	// Values contains the forecast predictions at regular intervals
+	// Values contains the forecast predictions at regular intervals (point estimate)
 	Values []float64
 
 	// StepSec is the interval in seconds between consecutive values
@@ -43,6 +47,19 @@ type Forecast struct {
 
 	// Horizon is the total forecast window in seconds
 	Horizon int
+
+	// Quantiles contains optional quantile predictions for uncertainty estimation.
+	// Keys are quantile levels (e.g., 0.5, 0.75, 0.9, 0.95).
+	// Each value is a slice of predictions matching the length of Values.
+	// If nil or empty, the capacity planner falls back to using headroom.
+	//
+	// Example:
+	//   Quantiles: map[float64][]float64{
+	//     0.50: []float64{100, 105, 110},  // median (same as Values)
+	//     0.90: []float64{120, 126, 132},  // 90th percentile
+	//     0.95: []float64{130, 137, 144},  // 95th percentile
+	//   }
+	Quantiles map[float64][]float64
 }
 
 // Model defines the interface for forecasting models.

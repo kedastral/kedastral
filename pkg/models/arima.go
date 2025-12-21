@@ -19,17 +19,18 @@ import (
 // The model requires training on historical data before making predictions.
 // It is thread-safe for concurrent Predict calls after training.
 type ARIMAModel struct {
-	metric     string
-	stepSec    int
-	horizonSec int
-	p, d, q    int
-	mu         sync.RWMutex
-	trained    bool
-	arCoeffs   []float64 // AR coefficients (length p)
-	maCoeffs   []float64 // MA coefficients (length q)
-	mean       float64   // Mean of stationary series
-	lastValues []float64 // Last p values for AR predictions
-	lastErrors []float64 // Last q errors for MA predictions
+	metric         string
+	stepSec        int
+	horizonSec     int
+	p, d, q        int
+	mu             sync.RWMutex
+	trained        bool
+	arCoeffs       []float64 // AR coefficients (length p)
+	maCoeffs       []float64 // MA coefficients (length q)
+	mean           float64   // Mean of stationary series
+	lastValues     []float64 // Last p values for AR predictions
+	lastErrors     []float64 // Last q errors for MA predictions
+	residualStdDev float64   // Standard deviation of residuals for quantile estimation
 }
 
 // NewARIMAModel creates a new ARIMA model with the specified parameters.
@@ -157,6 +158,17 @@ func (m *ARIMAModel) Train(ctx context.Context, history FeatureFrame) error {
 		copy(lastErrors, residuals[len(residuals)-m.q:])
 	}
 
+	// Compute standard deviation of residuals for quantile predictions
+	residualStdDev := 0.0
+	if len(residuals) > 1 {
+		sumSq := 0.0
+		for _, r := range residuals {
+			sumSq += r * r
+		}
+		variance := sumSq / float64(len(residuals)-1)
+		residualStdDev = math.Sqrt(variance)
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -166,6 +178,7 @@ func (m *ARIMAModel) Train(ctx context.Context, history FeatureFrame) error {
 	m.mean = mean
 	m.lastValues = lastValues
 	m.lastErrors = lastErrors
+	m.residualStdDev = residualStdDev
 
 	return nil
 }
@@ -202,6 +215,7 @@ func (m *ARIMAModel) Predict(ctx context.Context, features FeatureFrame) (Foreca
 	copy(lastValues, m.lastValues)
 	lastErrors := make([]float64, len(m.lastErrors))
 	copy(lastErrors, m.lastErrors)
+	residualStdDev := m.residualStdDev
 	m.mu.RUnlock()
 
 	nSteps := m.horizonSec / m.stepSec
@@ -251,11 +265,32 @@ func (m *ARIMAModel) Predict(ctx context.Context, features FeatureFrame) (Foreca
 		predictions[t] = pred
 	}
 
+	quantiles := make(map[float64][]float64)
+	if residualStdDev > 0 {
+		quantileLevels := map[float64]float64{
+			0.50: 0.0,
+			0.75: 0.674,
+			0.90: 1.282,
+			0.95: 1.645,
+		}
+
+		for q, z := range quantileLevels {
+			qValues := make([]float64, len(predictions))
+			for i, v := range predictions {
+				// Uncertainty grows with forecast horizon (sqrt of time)
+				horizonFactor := math.Sqrt(1.0 + float64(i)*0.1)
+				qValues[i] = math.Max(0, v+z*residualStdDev*horizonFactor)
+			}
+			quantiles[q] = qValues
+		}
+	}
+
 	return Forecast{
-		Metric:  m.metric,
-		Values:  predictions,
-		StepSec: m.stepSec,
-		Horizon: m.horizonSec,
+		Metric:    m.metric,
+		Values:    predictions,
+		StepSec:   m.stepSec,
+		Horizon:   m.horizonSec,
+		Quantiles: quantiles,
 	}, nil
 }
 

@@ -13,8 +13,15 @@ type Policy struct {
 	TargetPerPod float64
 
 	// Headroom is a multiplicative safety factor (e.g., 1.2 for +20%).
+	// Used as fallback when quantiles are not available.
 	// Must be >= 1.0
 	Headroom float64
+
+	// QuantileLevel specifies which quantile to use for capacity planning (e.g., 0.90 for p90).
+	// When > 0 and quantiles are provided, uses the quantile directly instead of headroom.
+	// Set to 0 to always use headroom (default behavior).
+	// Common values: 0.75 (moderate), 0.90 (conservative), 0.95 (very conservative)
+	QuantileLevel float64
 
 	// Min/Max replica bounds. MaxReplicas == 0 means "no upper bound".
 	MinReplicas int
@@ -41,7 +48,9 @@ type Policy struct {
 // prev is the previously applied desired replica count (from the last control loop tick).
 // forecast contains the metric values for each future step (e.g., RPS).
 // stepSec is the step resolution in seconds.
-func ToReplicas(prev int, forecast []float64, stepSec int, p Policy) []int {
+// quantiles optionally provides quantile forecasts. When provided and Policy.QuantileLevel > 0,
+// uses the specified quantile instead of applying headroom to the point forecast.
+func ToReplicas(prev int, forecast []float64, stepSec int, p Policy, quantiles map[float64][]float64) []int {
 	if len(forecast) == 0 {
 		return nil
 	}
@@ -73,13 +82,26 @@ func ToReplicas(prev int, forecast []float64, stepSec int, p Policy) []int {
 		p.PrewarmWindowSteps = 0
 	}
 
+	useQuantile := p.QuantileLevel > 0 && quantiles != nil && len(quantiles[p.QuantileLevel]) == len(forecast)
+
 	adj := make([]float64, len(forecast))
 	for i, v := range forecast {
 		if v < 0 {
 			v = 0
 		}
-		raw := v / p.TargetPerPod
-		adj[i] = raw * p.Headroom
+
+		var capacityValue float64
+		if useQuantile {
+			capacityValue = quantiles[p.QuantileLevel][i]
+			if capacityValue < 0 {
+				capacityValue = 0
+			}
+		} else {
+			capacityValue = v * p.Headroom
+		}
+
+		raw := capacityValue / p.TargetPerPod
+		adj[i] = raw
 	}
 
 	res := make([]int, len(forecast))

@@ -1,0 +1,19 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: simple-app-scaledobject
+  namespace: simple-app
+spec:
+  scaleTargetRef:
+    name: simple-app
+    kind: Deployment
+  minReplicaCount: 2
+  maxReplicaCount: 20
+  pollingInterval: 15 # How often KEDA checks (seconds)
+  cooldownPeriod: 60 # Wait time after last trigger before scaling to 0
+  triggers:
+    - type: external
+      metadata:
+        scalerAddress: kedastral-scaler.simple-app:50051
+        workload: simple-app
+        metricName: kedastral-simple-app-desired-replicas

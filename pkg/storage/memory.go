@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -119,11 +120,17 @@ func (s *MemoryStore) cleanup() {
 // Put stores a snapshot for a workload, replacing any existing snapshot.
 // The workload name is extracted from the snapshot's Workload field.
 //
-// Returns an error if the snapshot's Workload field is empty.
+// Returns an error if the snapshot's Workload field is empty or if context is canceled.
 // This operation is safe for concurrent use.
-func (s *MemoryStore) Put(snapshot Snapshot) error {
+func (s *MemoryStore) Put(ctx context.Context, snapshot Snapshot) error {
 	if snapshot.Workload == "" {
 		return fmt.Errorf("snapshot workload cannot be empty")
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
 	}
 
 	s.mu.Lock()
@@ -138,10 +145,16 @@ func (s *MemoryStore) Put(snapshot Snapshot) error {
 // Returns:
 //   - snapshot: The stored snapshot (zero value if not found)
 //   - found: true if a snapshot exists for this workload, false otherwise
-//   - error: Always nil for MemoryStore (included for interface compatibility)
+//   - error: Context error if context is canceled, nil otherwise
 //
 // This operation is safe for concurrent use.
-func (s *MemoryStore) GetLatest(workload string) (Snapshot, bool, error) {
+func (s *MemoryStore) GetLatest(ctx context.Context, workload string) (Snapshot, bool, error) {
+	select {
+	case <-ctx.Done():
+		return Snapshot{}, false, ctx.Err()
+	default:
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

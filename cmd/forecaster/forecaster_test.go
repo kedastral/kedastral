@@ -33,16 +33,17 @@ func TestNew(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := metrics.New("test-workload-new")
 
-	f := New(
+	f := NewWorkloadForecaster(
 		"test-workload",
 		adapter,
 		model,
 		builder,
 		store,
 		policy,
-		30*time.Minute,
-		1*time.Minute,
-		30*time.Minute,
+		30*time.Minute, // horizon
+		1*time.Minute,  // step
+		30*time.Minute, // window
+		1*time.Minute,  // interval
 		logger,
 		m,
 	)
@@ -50,8 +51,8 @@ func TestNew(t *testing.T) {
 	if f == nil {
 		t.Fatal("New() returned nil")
 	}
-	if f.workload != "test-workload" {
-		t.Errorf("workload = %q, want %q", f.workload, "test-workload")
+	if f.name != "test-workload" {
+		t.Errorf("workload = %q, want %q", f.name, "test-workload")
 	}
 	if f.currentReplicas != policy.MinReplicas {
 		t.Errorf("currentReplicas = %d, want %d", f.currentReplicas, policy.MinReplicas)
@@ -69,45 +70,23 @@ func TestNew_NilLogger(t *testing.T) {
 	policy := &capacity.Policy{MinReplicas: 1}
 	m := metrics.New("test-nil-logger")
 
-	f := New(
+	f := NewWorkloadForecaster(
 		"test",
 		adapter,
 		model,
 		builder,
 		store,
 		policy,
-		30*time.Minute,
-		1*time.Minute,
-		30*time.Minute,
-		nil, // nil logger
+		30*time.Minute, // horizon
+		1*time.Minute,  // step
+		30*time.Minute, // window
+		1*time.Minute,  // interval
+		nil,            // nil logger
 		m,
 	)
 
 	if f.logger == nil {
 		t.Error("logger should not be nil when nil is passed")
-	}
-}
-
-func TestForecaster_GetStore(t *testing.T) {
-	store := storage.NewMemoryStore()
-	f := &Forecaster{
-		store: store,
-	}
-
-	got := f.GetStore()
-	if got != store {
-		t.Error("GetStore() did not return the correct store")
-	}
-}
-
-func TestForecaster_GetWorkload(t *testing.T) {
-	f := &Forecaster{
-		workload: "my-workload",
-	}
-
-	got := f.GetWorkload()
-	if got != "my-workload" {
-		t.Errorf("GetWorkload() = %q, want %q", got, "my-workload")
 	}
 }
 
@@ -123,16 +102,17 @@ func TestForecaster_Run_ContextCancellation(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := metrics.New("test-run-cancel")
 
-	f := New(
+	f := NewWorkloadForecaster(
 		"test",
 		adapter,
 		model,
 		builder,
 		store,
 		policy,
-		30*time.Minute,
-		1*time.Minute,
-		30*time.Minute,
+		30*time.Minute, // horizon
+		1*time.Minute,  // step
+		30*time.Minute, // window
+		1*time.Minute,  // interval
 		logger,
 		m,
 	)
@@ -142,7 +122,7 @@ func TestForecaster_Run_ContextCancellation(t *testing.T) {
 	// Cancel immediately
 	cancel()
 
-	err := f.Run(ctx, 1*time.Second)
+	err := f.Run(ctx)
 	if err != context.Canceled {
 		t.Errorf("Run() error = %v, want %v", err, context.Canceled)
 	}
@@ -160,16 +140,17 @@ func TestForecaster_Run_Timeout(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := metrics.New("test-run-timeout")
 
-	f := New(
+	f := NewWorkloadForecaster(
 		"test",
 		adapter,
 		model,
 		builder,
 		store,
 		policy,
-		30*time.Minute,
-		1*time.Minute,
-		30*time.Minute,
+		30*time.Minute, // horizon
+		1*time.Minute,  // step
+		30*time.Minute, // window
+		1*time.Hour,    // interval (very long)
 		logger,
 		m,
 	)
@@ -177,7 +158,7 @@ func TestForecaster_Run_Timeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	err := f.Run(ctx, 1*time.Hour) // Very long interval
+	err := f.Run(ctx)
 	if err != context.DeadlineExceeded {
 		t.Errorf("Run() error = %v, want %v", err, context.DeadlineExceeded)
 	}
@@ -193,7 +174,7 @@ func TestForecaster_CalculateReplicas(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := metrics.New("test-calc-replicas")
 
-	f := &Forecaster{
+	f := &WorkloadForecaster{
 		policy:          policy,
 		step:            1 * time.Minute,
 		currentReplicas: 2,
@@ -202,7 +183,7 @@ func TestForecaster_CalculateReplicas(t *testing.T) {
 	}
 
 	values := []float64{200, 300, 400}
-	desiredReplicas, duration := f.calculateReplicas(values)
+	desiredReplicas, duration := f.calculateReplicas(values, nil)
 
 	if len(desiredReplicas) != len(values) {
 		t.Errorf("len(desiredReplicas) = %d, want %d", len(desiredReplicas), len(values))
@@ -222,7 +203,7 @@ func TestForecaster_BuildFeatures(t *testing.T) {
 	builder := features.NewBuilder()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	f := &Forecaster{
+	f := &WorkloadForecaster{
 		builder: builder,
 		logger:  logger,
 	}
@@ -248,7 +229,7 @@ func TestForecaster_BuildFeatures_Error(t *testing.T) {
 	builder := features.NewBuilder()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	f := &Forecaster{
+	f := &WorkloadForecaster{
 		builder: builder,
 		logger:  logger,
 	}
@@ -268,8 +249,8 @@ func TestForecaster_StoreSnapshot(t *testing.T) {
 	store := storage.NewMemoryStore()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	f := &Forecaster{
-		workload: "test-api",
+	f := &WorkloadForecaster{
+		name:"test-api",
 		store:    store,
 		step:     1 * time.Minute,
 		horizon:  30 * time.Minute,
@@ -282,13 +263,13 @@ func TestForecaster_StoreSnapshot(t *testing.T) {
 	}
 	desiredReplicas := []int{2, 3, 3}
 
-	err := f.storeSnapshot(forecast, desiredReplicas)
+	err := f.storeSnapshot(context.Background(), forecast, desiredReplicas)
 	if err != nil {
 		t.Fatalf("storeSnapshot() error = %v", err)
 	}
 
 	// Verify snapshot was stored
-	snapshot, found, err := store.GetLatest("test-api")
+	snapshot, found, err := store.GetLatest(context.Background(), "test-api")
 	if err != nil {
 		t.Fatalf("GetLatest() error = %v", err)
 	}
@@ -321,8 +302,8 @@ func TestForecaster_Tick_WithMetrics(t *testing.T) {
 
 	// We can't use real Prometheus adapter in tests without a server,
 	// so this test is limited. In integration tests, we'd test with a mock adapter.
-	_ = &Forecaster{
-		workload: "test",
+	_ = &WorkloadForecaster{
+		name: "test",
 		builder:  builder,
 		model:    model,
 		store:    store,
@@ -351,8 +332,8 @@ func TestForecaster_Tick_WithoutMetrics(t *testing.T) {
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	f := &Forecaster{
-		workload: "test",
+	f := &WorkloadForecaster{
+		name:"test",
 		builder:  builder,
 		model:    model,
 		store:    store,

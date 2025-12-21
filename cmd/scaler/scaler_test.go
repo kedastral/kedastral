@@ -13,6 +13,7 @@ import (
 	"github.com/HatiCode/kedastral/cmd/scaler/metrics"
 	pb "github.com/HatiCode/kedastral/pkg/api/externalscaler"
 	"github.com/HatiCode/kedastral/pkg/storage"
+	"github.com/HatiCode/kedastral/pkg/tls"
 )
 
 // Shared metrics instance for all tests to avoid duplicate registration
@@ -22,7 +23,10 @@ func TestNew(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := scalerTestMetrics
 
-	s := New("http://localhost:8081", 5*time.Minute, logger, m)
+	s, err := New("http://localhost:8081", 5*time.Minute, tls.Config{Enabled: false}, logger, m)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
 
 	if s == nil {
 		t.Fatal("New() returned nil")
@@ -38,7 +42,10 @@ func TestNew(t *testing.T) {
 func TestNew_NilLogger(t *testing.T) {
 	m := scalerTestMetrics
 
-	s := New("http://localhost:8081", 5*time.Minute, nil, m)
+	s, err := New("http://localhost:8081", 5*time.Minute, tls.Config{Enabled: false}, nil, m)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
 
 	if s.logger == nil {
 		t.Error("logger should not be nil when nil is passed")
@@ -206,7 +213,10 @@ func TestScaler_IsActive_Success(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := scalerTestMetrics
-	s := New(server.URL, 5*time.Minute, logger, m)
+	s, err := New(server.URL, 5*time.Minute, tls.Config{Enabled: false}, logger, m)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
 
 	ref := &pb.ScaledObjectRef{
 		Name:           "test-api",
@@ -246,7 +256,10 @@ func TestScaler_IsActive_Stale(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := scalerTestMetrics
-	s := New(server.URL, 5*time.Minute, logger, m)
+	s, err := New(server.URL, 5*time.Minute, tls.Config{Enabled: false}, logger, m)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
 
 	ref := &pb.ScaledObjectRef{
 		Name:           "test-api",
@@ -273,7 +286,10 @@ func TestScaler_IsActive_Error(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := scalerTestMetrics
-	s := New(server.URL, 5*time.Minute, logger, m)
+	s, err := New(server.URL, 5*time.Minute, tls.Config{Enabled: false}, logger, m)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
 
 	ref := &pb.ScaledObjectRef{
 		Name:           "test-api",
@@ -294,7 +310,10 @@ func TestScaler_IsActive_Error(t *testing.T) {
 func TestScaler_GetMetricSpec(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := scalerTestMetrics
-	s := New("http://localhost:8081", 5*time.Minute, logger, m)
+	s, err := New("http://localhost:8081", 5*time.Minute, tls.Config{Enabled: false}, logger, m)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
 
 	ref := &pb.ScaledObjectRef{
 		Name:      "test-api",
@@ -344,7 +363,10 @@ func TestScaler_GetMetrics_Success(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := scalerTestMetrics
-	s := New(server.URL, 5*time.Minute, logger, m)
+	s, err := New(server.URL, 5*time.Minute, tls.Config{Enabled: false}, logger, m)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
 
 	req := &pb.GetMetricsRequest{
 		ScaledObjectRef: &pb.ScaledObjectRef{
@@ -385,7 +407,10 @@ func TestScaler_GetMetrics_Error(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := scalerTestMetrics
-	s := New(server.URL, 5*time.Minute, logger, m)
+	s, err := New(server.URL, 5*time.Minute, tls.Config{Enabled: false}, logger, m)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
 
 	req := &pb.GetMetricsRequest{
 		ScaledObjectRef: &pb.ScaledObjectRef{
@@ -396,7 +421,7 @@ func TestScaler_GetMetrics_Error(t *testing.T) {
 		MetricName: "kedastral-test-api-desired-replicas",
 	}
 
-	_, err := s.GetMetrics(context.Background(), req)
+	_, err = s.GetMetrics(context.Background(), req)
 	if err == nil {
 		t.Error("GetMetrics() should return error when forecast fetch fails")
 	}
@@ -405,7 +430,10 @@ func TestScaler_GetMetrics_Error(t *testing.T) {
 func TestScaler_StreamIsActive_NotImplemented(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := scalerTestMetrics
-	s := New("http://localhost:8081", 5*time.Minute, logger, m)
+	s, err := New("http://localhost:8081", 5*time.Minute, tls.Config{Enabled: false}, logger, m)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
 
 	ref := &pb.ScaledObjectRef{
 		Name:           "test-api",
@@ -413,7 +441,7 @@ func TestScaler_StreamIsActive_NotImplemented(t *testing.T) {
 		ScalerMetadata: map[string]string{},
 	}
 
-	err := s.StreamIsActive(ref, nil)
+	err = s.StreamIsActive(ref, nil)
 	if err == nil {
 		t.Error("StreamIsActive() should return error (not implemented)")
 	}

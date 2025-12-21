@@ -21,6 +21,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/HatiCode/kedastral/pkg/tls"
 )
 
 type Config struct {
@@ -29,6 +31,7 @@ type Config struct {
 	LeadTime      time.Duration
 	LogFormat     string
 	LogLevel      string
+	TLS           tls.Config
 }
 
 func ParseFlags() *Config {
@@ -40,9 +43,13 @@ func ParseFlags() *Config {
 	flag.StringVar(&cfg.LogFormat, "log-format", getEnv("LOG_FORMAT", "text"), "Log format (text|json)")
 	flag.StringVar(&cfg.LogLevel, "log-level", getEnv("LOG_LEVEL", "info"), "Log level (debug|info|warn|error)")
 
+	flag.BoolVar(&cfg.TLS.Enabled, "tls-enabled", getEnvBool("TLS_ENABLED", false), "Enable TLS for HTTP client")
+	flag.StringVar(&cfg.TLS.CertFile, "tls-cert-file", getEnv("TLS_CERT_FILE", ""), "TLS certificate file")
+	flag.StringVar(&cfg.TLS.KeyFile, "tls-key-file", getEnv("TLS_KEY_FILE", ""), "TLS private key file")
+	flag.StringVar(&cfg.TLS.CAFile, "tls-ca-file", getEnv("TLS_CA_FILE", ""), "TLS CA certificate file for server verification")
+
 	flag.Parse()
 
-	// Validation
 	if cfg.ForecasterURL == "" {
 		fmt.Fprintln(os.Stderr, "Error: -forecaster-url is required")
 		flag.Usage()
@@ -73,6 +80,13 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 		if d, err := time.ParseDuration(value); err == nil {
 			return d
 		}
+	}
+	return defaultValue
+}
+
+func getEnvBool(key string, defaultValue bool) bool {
+	if value := os.Getenv(key); value != "" {
+		return value == "true" || value == "1"
 	}
 	return defaultValue
 }
