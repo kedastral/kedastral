@@ -51,10 +51,10 @@ jobs:
           helm template kedastral deploy/helm/kedastral \
             --set forecaster.config.workload=test-app \
             --set forecaster.config.promQuery='up' \
-            > /tmp/manifests.yaml
+            > manifests.yaml
 
       - name: Validate Kubernetes manifests
         uses: instrumenta/kubeval-action@master
         with:
-          files: /tmp/manifests.yaml
+          files: manifests.yaml
           version: '1.29.0'
