@@ -17,7 +17,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/forecaster-deployment.yaml") . | sha256sum }}
+        checksum/config: {{ toYaml .Values.forecaster.config | sha256sum }}
         {{- with .Values.forecaster.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

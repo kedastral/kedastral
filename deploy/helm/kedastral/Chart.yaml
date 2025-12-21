@@ -11,6 +11,7 @@ keywords:
   - forecasting
   - predictive
 home: https://github.com/kedastral/kedastral
+icon: https://raw.githubusercontent.com/kedastral/kedastral/main/docs/logo.png
 sources:
   - https://github.com/kedastral/kedastral
 maintainers:

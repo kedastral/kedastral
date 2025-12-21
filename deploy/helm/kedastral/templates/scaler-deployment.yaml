@@ -17,7 +17,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/scaler-deployment.yaml") . | sha256sum }}
+        checksum/config: {{ toYaml .Values.scaler.config | sha256sum }}
         {{- with .Values.scaler.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
