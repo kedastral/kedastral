@@ -212,7 +212,7 @@ jobs:
       - name: Generate release notes
         id: notes
         run: |
-          cat > release-notes.md << EOF
+          cat > release-notes.md << 'EOF'
           # Kedastral ${{ steps.version.outputs.VERSION }}
 
           ## Installation
