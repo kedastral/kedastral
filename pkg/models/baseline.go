@@ -30,7 +30,6 @@ import (
 //     b. Seasonal adjustment from learned patterns
 //     c. Combine base trend with seasonal component (adaptive weighting)
 //  5. Clamp to non-negative values
-//
 type BaselineModel struct {
 	// metric is the name of the metric being forecast
 	metric string
@@ -82,8 +81,8 @@ func (m *BaselineModel) Name() string {
 // Train learns seasonal patterns from historical data.
 //
 // The model extracts:
-//  - Minute-of-hour patterns (0-59): for intra-hour cycles
-//  - Hour-of-day patterns (0-23): for daily cycles
+//   - Minute-of-hour patterns (0-59): for intra-hour cycles
+//   - Hour-of-day patterns (0-23): for daily cycles
 //
 // For each time bucket, computes: mean, min, max, count
 // Requires at least 2 observations per bucket to establish a pattern.
@@ -117,14 +116,14 @@ func (m *BaselineModel) Train(ctx context.Context, history FeatureFrame) error {
 		}
 	}
 
-	for minute := 0; minute < 60; minute++ {
+	for minute := range 60 {
 		values := minuteValues[minute]
 		if len(values) >= 2 {
 			m.minuteSeasonality[minute] = computeSeasonalPattern(values)
 		}
 	}
 
-	for hour := 0; hour < 24; hour++ {
+	for hour := range 24 {
 		values := hourValues[hour]
 		if len(values) >= 2 {
 			m.hourSeasonality[hour] = computeSeasonalPattern(values)
@@ -390,10 +389,7 @@ func detectTrend(values []float64) float64 {
 	}
 
 	// Use last 10 points or all available, whichever is smaller
-	windowSize := 10
-	if len(values) < windowSize {
-		windowSize = len(values)
-	}
+	windowSize := min(len(values), 10)
 
 	window := values[len(values)-windowSize:]
 

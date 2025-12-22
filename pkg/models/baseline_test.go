@@ -273,8 +273,8 @@ func TestBaselineModel_Predict_WithRecurringSpikes(t *testing.T) {
 	// Create 3 hours of training data with spikes every 30 minutes
 	// Baseline load: 100 RPS, Spike load: 500 RPS
 	var trainingData FeatureFrame
-	for hour := 0; hour < 3; hour++ {
-		for minute := 0; minute < 60; minute++ {
+	for hour := range 3 {
+		for minute := range 60 {
 			value := 100.0 // baseline
 			if minute == 0 || minute == 30 {
 				value = 500.0 // spike
@@ -326,7 +326,7 @@ func TestBaselineModel_Predict_WithRecurringSpikes(t *testing.T) {
 	}
 
 	// Earlier predictions (minute 21-29) should be lower than the spike
-	for i := 0; i < spikeIndex; i++ {
+	for i := range spikeIndex {
 		if forecast.Values[i] > forecast.Values[spikeIndex]*0.8 {
 			t.Errorf("forecast[%d] = %.2f should be significantly lower than spike forecast %.2f",
 				i, forecast.Values[i], forecast.Values[spikeIndex])
