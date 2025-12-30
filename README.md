@@ -1,6 +1,6 @@
 # Kedastral
 
-> **Predict tomorrow's load, scale today.**
+*Predict tomorrow's load, scale today.*
 
 [![Release](https://img.shields.io/github/v/release/kedastral/kedastral?color=blue)](https://github.com/kedastral/kedastral/releases/latest)
 [![Go Reference](https://pkg.go.dev/badge/github.com/kedastral/kedastral.svg)](https://pkg.go.dev/github.com/kedastral/kedastral)
