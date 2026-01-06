@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2026-01-06
+
+### Added
+
+- **Bring Your Own Model (BYOM)**: Support for external custom forecasting models via HTTP API
+  - New `pkg/models/byom.go` implementing the Model interface with HTTP client for external predictions
+  - BYOM HTTP contract: POST `/predict` with features and horizon, returns forecast values and optional quantiles
+  - Model selection via `--model=byom` flag with `--byom-url` for external model endpoint
+  - Comprehensive test suite with mock HTTP server covering success, errors, timeouts, and malformed responses
+  - **Prophet Example**: Complete Python-based forecasting service using Facebook Prophet
+    - Flask API implementing BYOM contract (`examples/prophet-byom/app.py`)
+    - Automatic trend detection, seasonality (daily, weekly, yearly), and holiday effects
+    - Quantile prediction support (p50, p75, p90, p95) using prediction intervals
+    - Docker image with requirements: pandas, prophet, flask, gunicorn
+    - Kubernetes deployment example with health checks and resource limits
+    - Comprehensive README with local testing and deployment instructions
+  - BYOM workload configuration example in `deploy/examples/workloads-byom.yaml`
+  - Detailed documentation in `docs/byom.md` covering:
+    - HTTP contract specification with request/response schemas
+    - Authentication and security considerations (mTLS, API keys)
+    - Error handling and retry logic (3 retries with exponential backoff)
+    - Performance guidelines (1s timeout for training, 500ms for prediction)
+    - Feature engineering guide for external models
+    - Example implementations in Python (Prophet, ARIMA, LSTM)
+    - Troubleshooting guide and best practices
+
+### Changed
+
+- **Documentation Restructure**: Reorganized documentation for better clarity and navigation
+  - Condensed main README.md focusing on quick start and key features
+  - Created dedicated `cmd/forecaster/README.md` (510 lines) with complete forecaster documentation
+  - Created dedicated `cmd/scaler/README.md` (556 lines) with complete scaler documentation
+  - New `docs/ARCHITECTURE.md` (356 lines) with system design and component interactions
+  - New `docs/CONFIGURATION.md` (471 lines) with comprehensive configuration reference
+  - New `docs/DEPLOYMENT.md` (701 lines) with production deployment guides
+  - New `docs/OBSERVABILITY.md` (404 lines) with monitoring and alerting setup
+  - New `docs/QUICKSTART.md` (238 lines) with step-by-step getting started guide
+  - Removed outdated `docs/cli-design.md` (replaced by structured documentation)
+  - Total documentation expansion: 3,405 lines added, 755 lines removed
+
+### Dependencies
+
+- Bumped Flask from 3.1.0 to 3.1.1 in `examples/prophet-byom` (security update)
+
+### Documentation
+
+- Added comprehensive BYOM guide with contract specs, security, and examples
+- Restructured all documentation into focused, topic-specific files
+- Added detailed README for Prophet BYOM example
+- Enhanced deployment examples with BYOM workload configuration
+
 ## [0.1.4] - 2025-12-21
 
 ### Added
@@ -269,6 +320,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Kubernetes deployment examples
 - Documentation and getting started guide
 
+[0.1.5]: https://github.com/kedastral/kedastral/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/kedastral/kedastral/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/kedastral/kedastral/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/kedastral/kedastral/compare/v0.1.1...v0.1.2
