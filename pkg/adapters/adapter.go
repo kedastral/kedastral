@@ -3,11 +3,15 @@
 // into a common DataFrame structure.
 //
 // Each adapter implements the Adapter interface and can be plugged into
-// the Kedastral Forecast Engine. Typical adapters include:
+// the Kedastral Forecast Engine. Available adapters include:
 //   - PrometheusAdapter — fetches metrics via the Prometheus HTTP API
-//   - HTTPAdapter       — calls arbitrary REST endpoints for events or data
+//   - HTTPAdapter       — generic adapter for any REST API with JSON responses
+//
+// Future adapters (planned):
 //   - ScheduleAdapter   — provides upcoming time-based events (e.g. matches)
 //   - KafkaAdapter      — reads lag, queue depth, or message rate
+//   - VictoriaMetricsAdapter — optimized for VictoriaMetrics TSDB
+//   - VictoriaLogsAdapter    — log-based metrics from VictoriaLogs
 //
 // Adapters are intentionally lightweight. They focus on pulling raw data,
 // shaping it into [DataFrame] objects, and leaving all feature building and

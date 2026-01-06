@@ -1,0 +1,212 @@
+# Example workload configurations using the Generic HTTP Adapter
+#
+# The HTTP adapter allows Kedastral to collect metrics from any REST API
+# by extracting time-series data using JSON path expressions.
+#
+# This enables integration with:
+# - Custom metrics APIs
+# - Third-party monitoring services (Datadog, New Relic, etc.)
+# - Cloud provider APIs (AWS CloudWatch, GCP Monitoring, Azure Monitor)
+# - Internal dashboards and analytics systems
+#
+# Key Features:
+# - Flexible JSON path extraction using gjson syntax
+# - Template-based request bodies with dynamic variables
+# - Custom headers for authentication (Bearer tokens, API keys)
+# - Support for RFC3339, Unix seconds, and Unix milliseconds timestamps
+# - GET and POST methods
+
+workloads:
+  # Example 1: Simple GET request with Bearer token authentication
+  - name: api-metrics-basic
+    metric: http_requests_per_second
+    adapter:
+      type: http
+      config:
+        url: "https://api.example.com/metrics/requests"
+        method: GET
+        headers:
+          Authorization: "Bearer my-secret-token"
+        valuePath: "data.#.value"
+        timestampPath: "data.#.timestamp"
+        timestampFormat: "rfc3339"
+        stepSeconds: 60
+
+    policy:
+      targetPerPod: 100
+      headroom: 1.2
+      minReplicas: 2
+      maxReplicas: 50
+
+  # Example 2: POST request with template-based body
+  - name: api-metrics-advanced
+    metric: transaction_rate
+    adapter:
+      type: http
+      config:
+        url: "https://api.example.com/query"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+          X-API-Key: "my-api-key"
+        # Template variables available:
+        # {{.WindowSeconds}} - collection window in seconds
+        # {{.Start}}         - start time as Unix timestamp
+        # {{.End}}           - end time as Unix timestamp
+        # {{.Step}}          - step size in seconds
+        # {{.StartRFC3339}}  - start time as RFC3339 string
+        # {{.EndRFC3339}}    - end time as RFC3339 string
+        body: |
+          {
+            "metric": "transaction_count",
+            "from": "{{.StartRFC3339}}",
+            "to": "{{.EndRFC3339}}",
+            "resolution": "{{.Step}}s"
+          }
+        valuePath: "results.#.count"
+        timestampPath: "results.#.time"
+        timestampFormat: "rfc3339"
+        stepSeconds: 60
+
+    policy:
+      targetPerPod: 500
+      headroom: 1.3
+      minReplicas: 3
+      maxReplicas: 100
+
+  # Example 3: Unix timestamp format (seconds)
+  - name: custom-dashboard-metrics
+    metric: cpu_usage
+    adapter:
+      type: http
+      config:
+        url: "https://dashboard.example.com/api/timeseries"
+        method: GET
+        headers:
+          Authorization: "Bearer {{.Token}}"
+        templateVars:
+          Token: "xyz-secret-token-123"
+        valuePath: "series.cpu.#.value"
+        timestampPath: "series.cpu.#.ts"
+        timestampFormat: "unix"  # Unix seconds
+        stepSeconds: 30
+
+    policy:
+      targetPerPod: 70  # Target 70% CPU per pod
+      headroom: 1.1
+      minReplicas: 1
+      maxReplicas: 20
+
+  # Example 4: Unix milliseconds timestamp (common in JavaScript APIs)
+  - name: realtime-events
+    metric: events_per_minute
+    adapter:
+      type: http
+      config:
+        url: "https://events.example.com/api/v1/metrics"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+          Authorization: "Bearer event-api-key"
+        body: |
+          {
+            "query": {
+              "start": {{.Start}},
+              "end": {{.End}},
+              "interval": {{.Step}}
+            }
+          }
+        valuePath: "data.points.#.value"
+        timestampPath: "data.points.#.timestamp"
+        timestampFormat: "unix_milli"  # Unix milliseconds
+        stepSeconds: 60
+
+    policy:
+      targetPerPod: 1000
+      headroom: 1.5
+      minReplicas: 2
+      maxReplicas: 30
+
+  # Example 5: Nested JSON paths
+  - name: complex-api-response
+    metric: active_users
+    adapter:
+      type: http
+      config:
+        url: "https://analytics.example.com/api/query"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+          X-Tenant-ID: "tenant-123"
+          X-API-Secret: "api-secret"
+        body: |
+          {
+            "metrics": ["active_users"],
+            "timeRange": {
+              "start": "{{.StartRFC3339}}",
+              "end": "{{.EndRFC3339}}"
+            },
+            "granularity": "{{.Step}}s"
+          }
+        # gjson supports nested paths and array indexing
+        # Use # to iterate over arrays
+        valuePath: "response.metrics.active_users.dataPoints.#.value"
+        timestampPath: "response.metrics.active_users.dataPoints.#.time"
+        timestampFormat: "rfc3339"
+        stepSeconds: 60
+
+    policy:
+      targetPerPod: 200
+      headroom: 1.25
+      minReplicas: 5
+      maxReplicas: 50
+
+---
+# Example Kubernetes ConfigMap for use with Kedastral
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kedastral-http-workloads
+  namespace: kedastral
+data:
+  workloads.yaml: |
+    workloads:
+      - name: my-api
+        metric: http_rps
+        adapter:
+          type: http
+          config:
+            url: "https://monitoring.example.com/api/metrics"
+            method: POST
+            headers:
+              Authorization: "Bearer ${METRICS_API_TOKEN}"
+            body: |
+              {
+                "metric": "http_requests",
+                "from": "{{.StartRFC3339}}",
+                "to": "{{.EndRFC3339}}"
+              }
+            valuePath: "data.#.value"
+            timestampPath: "data.#.timestamp"
+            timestampFormat: "rfc3339"
+            stepSeconds: 60
+
+        policy:
+          targetPerPod: 100
+          headroom: 1.2
+          minReplicas: 2
+          maxReplicas: 50
+
+---
+# Example Secret for storing API tokens
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kedastral-api-tokens
+  namespace: kedastral
+type: Opaque
+stringData:
+  metrics-api-token: "your-secret-token-here"
+  datadog-api-key: "dd-api-key"
+  datadog-app-key: "dd-app-key"
+  newrelic-api-key: "nr-api-key"
