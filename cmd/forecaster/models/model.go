@@ -26,6 +26,10 @@ func New(cfg *config.Config, logger *slog.Logger) models.Model {
 		logger.Info("initializing baseline model")
 		return models.NewBaselineModel(cfg.Metric, stepSec, horizonSec)
 
+	case "byom":
+		logger.Info("initializing BYOM model", "url", cfg.BYOMURL)
+		return models.NewBYOMModel(cfg.BYOMURL, cfg.Metric, stepSec, horizonSec)
+
 	default:
 		logger.Error("invalid model type", "model", cfg.Model)
 		os.Exit(1)
@@ -52,6 +56,10 @@ func NewForWorkload(wc config.WorkloadConfig, logger *slog.Logger) models.Model 
 	case "baseline":
 		logger.Info("initializing baseline model", "workload", wc.Name)
 		return models.NewBaselineModel(wc.Metric, stepSec, horizonSec)
+
+	case "byom":
+		logger.Info("initializing BYOM model", "workload", wc.Name, "url", wc.BYOMURL)
+		return models.NewBYOMModel(wc.BYOMURL, wc.Metric, stepSec, horizonSec)
 
 	default:
 		logger.Error("invalid model type", "model", wc.Model, "workload", wc.Name)

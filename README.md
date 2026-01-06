@@ -19,7 +19,8 @@ Where **KEDA** reacts to what *has already happened*, **Kedastral** predicts *wh
 - 🔮 **Predictive scaling** — Forecast demand and scale before spikes arrive
 - ⚙️ **KEDA-native** — Implements KEDA External Scaler gRPC protocol
 - 📈 **Prometheus integration** — Pull metrics from Prometheus for forecasting
-- 🧠 **Multiple models** — Statistical baseline + ARIMA time-series forecasting
+- 🧠 **Multiple models** — Baseline, ARIMA, or BYOM (bring your own model)
+- 🔌 **Extensible** — Plug in custom models via HTTP (Prophet, TensorFlow, etc.)
 - 💾 **HA-ready** — In-memory or Redis storage for high availability
 - 🚀 **Fast & efficient** — Built in Go, minimal footprint
 - 🔐 **Data stays local** — All forecasting happens inside your cluster
@@ -92,6 +93,7 @@ Kedastral is **domain-agnostic** and works for any workload with predictable pat
 
 ### Deep Dives
 - **[Forecasting Models](docs/models/)** - Baseline and ARIMA models
+- **[BYOM (Bring Your Own Model)](docs/byom.md)** - Integrate custom models via HTTP
 - **[Capacity Planning](docs/planner/)** - Replica calculation and tuning
 - **[Observability](docs/OBSERVABILITY.md)** - Metrics and monitoring
 - **[Security Audit](docs/SECURITY_AUDIT.md)** - Security review results

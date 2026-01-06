@@ -71,6 +71,7 @@ type Config struct {
 	ARIMA_P               int
 	ARIMA_D               int
 	ARIMA_Q               int
+	BYOMURL               string
 }
 
 // WorkloadConfig holds configuration for a single workload.
@@ -94,6 +95,7 @@ type WorkloadConfig struct {
 	ARIMA_P               int           `yaml:"arimaP,omitempty"`
 	ARIMA_D               int           `yaml:"arimaD,omitempty"`
 	ARIMA_Q               int           `yaml:"arimaQ,omitempty"`
+	BYOMURL               string        `yaml:"byomURL,omitempty"`
 }
 
 type workloadsFile struct {
@@ -138,10 +140,11 @@ func ParseFlags() *Config {
 	flag.StringVar(&cfg.PromQuery, "prom-query", getEnv("PROM_QUERY", ""), "Prometheus query (required in single-workload mode)")
 	flag.DurationVar(&cfg.Interval, "interval", getEnvDuration("INTERVAL", 30*time.Second), "Forecast interval")
 	flag.DurationVar(&cfg.Window, "window", getEnvDuration("WINDOW", 30*time.Minute), "Historical window")
-	flag.StringVar(&cfg.Model, "model", getEnv("MODEL", "baseline"), "Forecasting model: baseline or arima")
+	flag.StringVar(&cfg.Model, "model", getEnv("MODEL", "baseline"), "Forecasting model: baseline, arima, or byom")
 	flag.IntVar(&cfg.ARIMA_P, "arima-p", getEnvInt("ARIMA_P", 0), "ARIMA AR order (0=auto, default 1)")
 	flag.IntVar(&cfg.ARIMA_D, "arima-d", getEnvInt("ARIMA_D", 0), "ARIMA differencing order (0=auto, default 1)")
 	flag.IntVar(&cfg.ARIMA_Q, "arima-q", getEnvInt("ARIMA_Q", 0), "ARIMA MA order (0=auto, default 1)")
+	flag.StringVar(&cfg.BYOMURL, "byom-url", getEnv("BYOM_URL", ""), "BYOM service URL (required when model=byom)")
 
 	flag.Parse()
 
@@ -234,6 +237,7 @@ func LoadWorkloads(ctx context.Context, cfg *Config) ([]WorkloadConfig, error) {
 		ARIMA_P:               cfg.ARIMA_P,
 		ARIMA_D:               cfg.ARIMA_D,
 		ARIMA_Q:               cfg.ARIMA_Q,
+		BYOMURL:               cfg.BYOMURL,
 	}
 
 	if err := validateWorkload(&workload, 0); err != nil {
@@ -386,8 +390,12 @@ func validateWorkload(w *WorkloadConfig, index int) error {
 		w.Model = "baseline"
 	}
 
-	if w.Model != "baseline" && w.Model != "arima" {
-		return fmt.Errorf("workload %q: invalid model %q (must be baseline or arima)", w.Name, w.Model)
+	if w.Model != "baseline" && w.Model != "arima" && w.Model != "byom" {
+		return fmt.Errorf("workload %q: invalid model %q (must be baseline, arima, or byom)", w.Name, w.Model)
+	}
+
+	if w.Model == "byom" && w.BYOMURL == "" {
+		return fmt.Errorf("workload %q: byomURL is required when model=byom", w.Name)
 	}
 
 	return nil
