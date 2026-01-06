@@ -22,10 +22,10 @@ type BYOMModel struct {
 }
 
 type byomRequest struct {
-	Now            string                   `json:"now"`
-	HorizonSeconds int                      `json:"horizonSeconds"`
-	StepSeconds    int                      `json:"stepSeconds"`
-	Features       []map[string]interface{} `json:"features"`
+	Now            string           `json:"now"`
+	HorizonSeconds int              `json:"horizonSeconds"`
+	StepSeconds    int              `json:"stepSeconds"`
+	Features       []map[string]any `json:"features"`
 }
 
 type byomResponse struct {
@@ -69,9 +69,9 @@ func (m *BYOMModel) Predict(ctx context.Context, features FeatureFrame) (Forecas
 		return Forecast{}, fmt.Errorf("byom: features cannot be empty")
 	}
 
-	reqFeatures := make([]map[string]interface{}, len(features.Rows))
+	reqFeatures := make([]map[string]any, len(features.Rows))
 	for i, row := range features.Rows {
-		feature := make(map[string]interface{})
+		feature := make(map[string]any)
 		for k, v := range row {
 			feature[k] = v
 		}

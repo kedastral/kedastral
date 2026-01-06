@@ -184,7 +184,7 @@ func (h *HTTPAdapter) Collect(ctx context.Context, windowSeconds int) (*DataFram
 	}
 
 	rows := make([]Row, 0, len(valArray))
-	for i := 0; i < len(valArray); i++ {
+	for i := range valArray {
 		val := valArray[i].Float()
 
 		ts, err := h.parseTimestamp(tsArray[i])
