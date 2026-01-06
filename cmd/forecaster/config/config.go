@@ -65,6 +65,8 @@ type Config struct {
 	DownMaxPercentPerStep int
 	PromURL               string
 	PromQuery             string
+	VictoriaMetricsURL    string
+	VictoriaMetricsQuery  string
 	Interval              time.Duration
 	Window                time.Duration
 	Model                 string
@@ -76,26 +78,35 @@ type Config struct {
 
 // WorkloadConfig holds configuration for a single workload.
 type WorkloadConfig struct {
-	Name                  string        `yaml:"name"`
-	Metric                string        `yaml:"metric"`
-	PromURL               string        `yaml:"prometheusURL"`
-	PromQuery             string        `yaml:"prometheusQuery"`
-	Horizon               time.Duration `yaml:"horizon"`
-	Step                  time.Duration `yaml:"step"`
-	Interval              time.Duration `yaml:"interval"`
-	Window                time.Duration `yaml:"window"`
-	Model                 string        `yaml:"model"`
-	TargetPerPod          float64       `yaml:"targetPerPod"`
-	Headroom              float64       `yaml:"headroom"`
-	QuantileLevel         string        `yaml:"quantileLevel,omitempty"`
-	MinReplicas           int           `yaml:"minReplicas"`
-	MaxReplicas           int           `yaml:"maxReplicas"`
-	UpMaxFactorPerStep    float64       `yaml:"upMaxFactorPerStep"`
-	DownMaxPercentPerStep int           `yaml:"downMaxPercentPerStep"`
-	ARIMA_P               int           `yaml:"arimaP,omitempty"`
-	ARIMA_D               int           `yaml:"arimaD,omitempty"`
-	ARIMA_Q               int           `yaml:"arimaQ,omitempty"`
-	BYOMURL               string        `yaml:"byomURL,omitempty"`
+	Name                  string         `yaml:"name"`
+	Metric                string         `yaml:"metric"`
+	PromURL               string         `yaml:"prometheusURL,omitempty"`
+	PromQuery             string         `yaml:"prometheusQuery,omitempty"`
+	VictoriaMetricsURL    string         `yaml:"victoriaMetricsURL,omitempty"`
+	VictoriaMetricsQuery  string         `yaml:"victoriaMetricsQuery,omitempty"`
+	AdapterConfig         *AdapterConfig `yaml:"adapter,omitempty"`
+	Horizon               time.Duration  `yaml:"horizon"`
+	Step                  time.Duration  `yaml:"step"`
+	Interval              time.Duration  `yaml:"interval"`
+	Window                time.Duration  `yaml:"window"`
+	Model                 string         `yaml:"model"`
+	TargetPerPod          float64        `yaml:"targetPerPod"`
+	Headroom              float64        `yaml:"headroom"`
+	QuantileLevel         string         `yaml:"quantileLevel,omitempty"`
+	MinReplicas           int            `yaml:"minReplicas"`
+	MaxReplicas           int            `yaml:"maxReplicas"`
+	UpMaxFactorPerStep    float64        `yaml:"upMaxFactorPerStep"`
+	DownMaxPercentPerStep int            `yaml:"downMaxPercentPerStep"`
+	ARIMA_P               int            `yaml:"arimaP,omitempty"`
+	ARIMA_D               int            `yaml:"arimaD,omitempty"`
+	ARIMA_Q               int            `yaml:"arimaQ,omitempty"`
+	BYOMURL               string         `yaml:"byomURL,omitempty"`
+}
+
+// AdapterConfig holds configuration for generic adapters (HTTP).
+type AdapterConfig struct {
+	Type   string         `yaml:"type"`
+	Config map[string]any `yaml:"config"`
 }
 
 type workloadsFile struct {
@@ -137,7 +148,9 @@ func ParseFlags() *Config {
 	flag.Float64Var(&cfg.UpMaxFactorPerStep, "up-max-factor", getEnvFloat("UP_MAX_FACTOR", 2.0), "Max scale-up factor per step")
 	flag.IntVar(&cfg.DownMaxPercentPerStep, "down-max-percent", getEnvInt("DOWN_MAX_PERCENT", 50), "Max scale-down percent per step")
 	flag.StringVar(&cfg.PromURL, "prom-url", getEnv("PROM_URL", "http://localhost:9090"), "Prometheus URL")
-	flag.StringVar(&cfg.PromQuery, "prom-query", getEnv("PROM_QUERY", ""), "Prometheus query (required in single-workload mode)")
+	flag.StringVar(&cfg.PromQuery, "prom-query", getEnv("PROM_QUERY", ""), "Prometheus query (single-workload mode, mutually exclusive with victoria-metrics-query)")
+	flag.StringVar(&cfg.VictoriaMetricsURL, "victoria-metrics-url", getEnv("VICTORIA_METRICS_URL", "http://localhost:8428"), "VictoriaMetrics URL")
+	flag.StringVar(&cfg.VictoriaMetricsQuery, "victoria-metrics-query", getEnv("VICTORIA_METRICS_QUERY", ""), "VictoriaMetrics query (single-workload mode, mutually exclusive with prom-query)")
 	flag.DurationVar(&cfg.Interval, "interval", getEnvDuration("INTERVAL", 30*time.Second), "Forecast interval")
 	flag.DurationVar(&cfg.Window, "window", getEnvDuration("WINDOW", 30*time.Minute), "Historical window")
 	flag.StringVar(&cfg.Model, "model", getEnv("MODEL", "baseline"), "Forecasting model: baseline, arima, or byom")
@@ -157,8 +170,14 @@ func ParseFlags() *Config {
 			fmt.Fprintln(os.Stderr, "Error: --metric is required (or use --config-file for multi-workload mode)")
 			os.Exit(1)
 		}
-		if cfg.PromQuery == "" {
-			fmt.Fprintln(os.Stderr, "Error: --prom-query is required (or use --config-file for multi-workload mode)")
+		promSet := cfg.PromQuery != ""
+		vmSet := cfg.VictoriaMetricsQuery != ""
+		if !promSet && !vmSet {
+			fmt.Fprintln(os.Stderr, "Error: --prom-query or --victoria-metrics-query is required (or use --config-file for multi-workload mode)")
+			os.Exit(1)
+		}
+		if promSet && vmSet {
+			fmt.Fprintln(os.Stderr, "Error: --prom-query and --victoria-metrics-query are mutually exclusive")
 			os.Exit(1)
 		}
 	}
@@ -223,6 +242,8 @@ func LoadWorkloads(ctx context.Context, cfg *Config) ([]WorkloadConfig, error) {
 		Metric:                cfg.Metric,
 		PromURL:               cfg.PromURL,
 		PromQuery:             cfg.PromQuery,
+		VictoriaMetricsURL:    cfg.VictoriaMetricsURL,
+		VictoriaMetricsQuery:  cfg.VictoriaMetricsQuery,
 		Horizon:               cfg.Horizon,
 		Step:                  cfg.Step,
 		Interval:              cfg.Interval,
@@ -230,6 +251,7 @@ func LoadWorkloads(ctx context.Context, cfg *Config) ([]WorkloadConfig, error) {
 		Model:                 cfg.Model,
 		TargetPerPod:          cfg.TargetPerPod,
 		Headroom:              cfg.Headroom,
+		QuantileLevel:         cfg.QuantileLevel,
 		MinReplicas:           cfg.MinReplicas,
 		MaxReplicas:           cfg.MaxReplicas,
 		UpMaxFactorPerStep:    cfg.UpMaxFactorPerStep,
@@ -330,12 +352,44 @@ func validateWorkload(w *WorkloadConfig, index int) error {
 		return fmt.Errorf("workload %q: metric cannot be empty", w.Name)
 	}
 
-	if w.PromQuery == "" {
-		return fmt.Errorf("workload %q: prometheusQuery cannot be empty", w.Name)
+	promSet := w.PromQuery != ""
+	vmSet := w.VictoriaMetricsQuery != ""
+	adapterSet := w.AdapterConfig != nil
+
+	sourceCount := 0
+	if promSet {
+		sourceCount++
+	}
+	if vmSet {
+		sourceCount++
+	}
+	if adapterSet {
+		sourceCount++
 	}
 
-	if w.PromURL == "" {
+	if sourceCount == 0 {
+		return fmt.Errorf("workload %q: must specify one of: prometheusQuery, victoriaMetricsQuery, or adapter config", w.Name)
+	}
+
+	if sourceCount > 1 {
+		return fmt.Errorf("workload %q: only one data source allowed (prometheusQuery, victoriaMetricsQuery, or adapter config)", w.Name)
+	}
+
+	if promSet && w.PromURL == "" {
 		w.PromURL = "http://localhost:9090"
+	}
+
+	if vmSet && w.VictoriaMetricsURL == "" {
+		w.VictoriaMetricsURL = "http://localhost:8428"
+	}
+
+	if adapterSet {
+		if w.AdapterConfig.Type == "" {
+			return fmt.Errorf("workload %q: adapter.type cannot be empty", w.Name)
+		}
+		if w.AdapterConfig.Type != "http" {
+			return fmt.Errorf("workload %q: unsupported adapter type %q (currently only 'http' is supported)", w.Name, w.AdapterConfig.Type)
+		}
 	}
 
 	if w.Horizon <= 0 {

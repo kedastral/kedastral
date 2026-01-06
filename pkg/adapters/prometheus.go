@@ -79,7 +79,7 @@ func (p *PrometheusAdapter) Collect(ctx context.Context, windowSeconds int) (*Da
 		return &DataFrame{}, fmt.Errorf("prometheus: status %d", resp.StatusCode)
 	}
 
-	var pr prometheusRangeResponse
+	var pr PrometheusRangeResponse
 	if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {
 		return &DataFrame{}, fmt.Errorf("decode prometheus response: %w", err)
 	}
@@ -87,7 +87,7 @@ func (p *PrometheusAdapter) Collect(ctx context.Context, windowSeconds int) (*Da
 		return &DataFrame{}, fmt.Errorf("prometheus status: %s", pr.Status)
 	}
 
-	rows, err := aggregateRangeResult(pr.Data.Result)
+	rows, err := AggregateRangeResult(pr.Data.Result)
 	if err != nil {
 		return &DataFrame{}, err
 	}
@@ -104,23 +104,27 @@ func (p *PrometheusAdapter) Collect(ctx context.Context, windowSeconds int) (*Da
 	return &DataFrame{Rows: rows}, nil
 }
 
-type prometheusRangeResponse struct {
+// PrometheusRangeResponse represents the response from Prometheus (and compatible systems).
+type PrometheusRangeResponse struct {
 	Status string              `json:"status"`
-	Data   prometheusRangeData `json:"data"`
+	Data   PrometheusRangeData `json:"data"`
 }
 
-type prometheusRangeData struct {
+// PrometheusRangeData contains the result data from a range query.
+type PrometheusRangeData struct {
 	ResultType string                 `json:"resultType"`
-	Result     []prometheusRangeSerie `json:"result"`
+	Result     []PrometheusRangeSerie `json:"result"`
 }
 
-type prometheusRangeSerie struct {
+// PrometheusRangeSerie represents a single time series in the result.
+type PrometheusRangeSerie struct {
 	Metric map[string]string `json:"metric"`
 	// Values is an array of [ <unix_time_float>, "<value_string>" ]
 	Values [][]any `json:"values"`
 }
 
-func aggregateRangeResult(series []prometheusRangeSerie) ([]Row, error) {
+// AggregateRangeResult aggregates multiple series into rows, summing values at the same timestamp.
+func AggregateRangeResult(series []PrometheusRangeSerie) ([]Row, error) {
 	acc := make(map[int64]float64)
 	for _, s := range series {
 		for _, pair := range s.Values {

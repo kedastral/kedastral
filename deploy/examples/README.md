@@ -11,6 +11,31 @@ This directory contains example configurations for deploying and using Kedastral
   - Uses Redis for forecast storage
   - Includes sensible defaults for capacity planning
 
+### Workload Configurations
+
+- **workloads-documented.yaml** - Comprehensive examples using Prometheus adapter
+  - HTTP API with baseline forecasting
+  - Queue-based worker with longer horizons
+  - Stream processor with ARIMA model
+  - Detailed comments explaining all configuration options
+
+- **workloads-http-adapter.yaml** - Examples using the generic HTTP adapter
+  - Custom metrics APIs and third-party monitoring services
+  - POST requests with template-based bodies
+  - Authentication with Bearer tokens and API keys
+  - Support for RFC3339, Unix seconds, and Unix milliseconds timestamps
+
+- **workloads-victoriametrics.yaml** - Examples using VictoriaMetrics adapter
+  - VictoriaMetrics single-node and cluster configurations
+  - MetricsQL extended query syntax examples
+  - Multi-tenant VictoriaMetrics setups
+  - Performance-optimized queries with rollup functions
+
+- **workloads-byom.yaml** - Examples using Bring Your Own Model (BYOM)
+  - External ML model integration via HTTP
+  - Custom forecasting algorithms
+  - Advanced time series models (Prophet, LSTM, etc.)
+
 ### KEDA ScaledObjects
 
 - **scaledobject-basic.yaml** - Basic ScaledObject using only Kedastral's predictive scaler
@@ -109,6 +134,30 @@ promQuery: 'sum(rate(container_cpu_usage_seconds_total{pod=~"my-api-.*"}[1m])) *
 
 # Custom business metric
 promQuery: 'sum(rate(orders_processed_total[1m]))'
+```
+
+## VictoriaMetrics Query Examples
+
+VictoriaMetrics supports standard PromQL and extended MetricsQL syntax:
+
+```yaml
+# Standard PromQL (compatible with Prometheus)
+victoriaMetricsQuery: 'sum(rate(http_requests_total{deployment="my-api"}[1m]))'
+
+# MetricsQL rollup_rate (more accurate than rate)
+victoriaMetricsQuery: 'sum(rollup_rate(http_requests_total{deployment="my-api"}[5m]))'
+
+# MetricsQL default_if_empty (handle missing metrics gracefully)
+victoriaMetricsQuery: 'default_if_empty(sum(queue_depth{queue="tasks"}), 0)'
+
+# MetricsQL quantile_over_time (built-in quantile calculation)
+victoriaMetricsQuery: 'quantile_over_time(0.99, response_time_seconds[5m])'
+
+# VictoriaMetrics cluster endpoint
+victoriaMetricsURL: 'http://vmselect.monitoring:8481/select/0/prometheus'
+
+# Multi-tenant VictoriaMetrics
+victoriaMetricsURL: 'http://victoria-metrics:8428/select/42/prometheus'
 ```
 
 ## Troubleshooting

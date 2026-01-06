@@ -171,6 +171,52 @@ For detailed tuning guidance, see [planner/tuning.md](planner/tuning.md).
 
 See [adapters/prometheus-limits.md](adapters/prometheus-limits.md) for query optimization.
 
+### VictoriaMetrics Adapter
+
+| Flag | Environment Variable | Default | Description |
+|------|---------------------|---------|-------------|
+| `--victoria-metrics-url` | `VICTORIA_METRICS_URL` | `http://localhost:8428` | VictoriaMetrics server URL |
+| `--victoria-metrics-query` | `VICTORIA_METRICS_QUERY` | _(required)_ | PromQL/MetricsQL query to fetch metric data |
+
+**Example (Single-Node):**
+```bash
+./bin/forecaster \
+  --victoria-metrics-url=http://victoria-metrics:8428 \
+  --victoria-metrics-query='sum(rate(http_requests_total{service="my-api"}[1m]))'
+```
+
+**Example (Cluster):**
+```bash
+./bin/forecaster \
+  --victoria-metrics-url=http://vmselect:8481/select/0/prometheus \
+  --victoria-metrics-query='sum(rollup_rate(http_requests_total{service="my-api"}[5m]))'
+```
+
+**VictoriaMetrics Features:**
+- **Prometheus-compatible API**: All PromQL queries work unchanged
+- **MetricsQL extensions**: Use `rollup_rate()`, `default_if_empty()`, `quantile_over_time()`, etc.
+- **Better performance**: Faster queries and lower resource usage than Prometheus
+- **Multi-tenancy**: Use `/select/<accountID>/prometheus` path for multi-tenant setups
+- **Long-term retention**: Efficient storage for extended historical data
+
+**Common VictoriaMetrics Ports:**
+- Single-node: `8428`
+- Cluster vmselect: `8481`
+
+**MetricsQL Query Examples:**
+```bash
+# Use MetricsQL rollup_rate (more accurate than rate)
+--victoria-metrics-query='sum(rollup_rate(requests_total[5m]))'
+
+# Handle missing metrics gracefully
+--victoria-metrics-query='default_if_empty(sum(queue_depth), 0)'
+
+# Built-in quantile calculation
+--victoria-metrics-query='quantile_over_time(0.99, response_time[5m])'
+```
+
+See [deploy/examples/workloads-victoriametrics.yaml](../deploy/examples/workloads-victoriametrics.yaml) for comprehensive examples.
+
 ### Storage Backend
 
 | Flag | Environment Variable | Default | Description |
@@ -260,6 +306,23 @@ workloads:
     maxReplicas: 100
     upMaxFactorPerStep: 1.5
     downMaxPercentPerStep: 30
+
+  # Example with VictoriaMetrics adapter
+  - name: data-processor
+    metric: processing_lag
+    victoriaMetricsURL: http://victoria-metrics:8428
+    victoriaMetricsQuery: 'max(rollup_rate(kafka_lag_seconds[5m]))'
+    horizon: 30m
+    step: 1m
+    interval: 30s
+    window: 2h
+    model: baseline
+    targetPerPod: 60
+    headroom: 1.2
+    minReplicas: 2
+    maxReplicas: 50
+    upMaxFactorPerStep: 2.5
+    downMaxPercentPerStep: 40
 ```
 
 **Usage:**
@@ -270,7 +333,8 @@ workloads:
 **Validation Rules:**
 - Each workload must have a unique `name`
 - `name` must be alphanumeric with dash/underscore, 1-253 characters
-- `metric`, `prometheusQuery` are required
+- `metric` is required
+- Must specify one data source: `prometheusQuery`, `victoriaMetricsQuery`, or `adapter` config
 - `step` must be ≤ `horizon`
 - `maxReplicas` must be ≥ `minReplicas`
 

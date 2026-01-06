@@ -18,7 +18,7 @@ Where **KEDA** reacts to what *has already happened*, **Kedastral** predicts *wh
 **Key Features:**
 - 🔮 **Predictive scaling** — Forecast demand and scale before spikes arrive
 - ⚙️ **KEDA-native** — Implements KEDA External Scaler gRPC protocol
-- 📈 **Prometheus integration** — Pull metrics from Prometheus for forecasting
+- 📈 **Multiple data sources** — Prometheus, VictoriaMetrics, or any HTTP API
 - 🧠 **Multiple models** — Baseline, ARIMA, or BYOM (bring your own model)
 - 🔌 **Extensible** — Plug in custom models via HTTP (Prophet, TensorFlow, etc.)
 - 💾 **HA-ready** — In-memory or Redis storage for high availability
@@ -31,14 +31,14 @@ Where **KEDA** reacts to what *has already happened*, **Kedastral** predicts *wh
 
 ```mermaid
 flowchart LR
-    A[Prometheus] --> B[Forecaster]
+    A[Metrics Source] --> B[Forecaster]
     B --> C[Scaler]
     C --> D[KEDA]
     D --> E[HPA]
     E --> F[Your Workload]
 ```
 
-1. **Forecaster** collects metrics from Prometheus and generates predictions
+1. **Forecaster** collects metrics from your data source (Prometheus, VictoriaMetrics, HTTP API) and generates predictions
 2. **Scaler** fetches forecasts and implements KEDA External Scaler protocol
 3. **KEDA** receives desired replicas and updates the HPA
 4. **Workload** scales proactively before demand arrives
@@ -109,8 +109,11 @@ Kedastral is **domain-agnostic** and works for any workload with predictable pat
 
 | Component | Status |
 |-----------|--------|
-| Forecaster (HTTP API + Prometheus) | ✅ |
+| Forecaster (HTTP API) | ✅ |
 | Scaler (KEDA External Scaler) | ✅ |
+| Prometheus adapter | ✅ |
+| VictoriaMetrics adapter | ✅ |
+| Generic HTTP adapter | ✅ |
 | Baseline forecasting model | ✅ |
 | ARIMA forecasting model | ✅ |
 | In-memory storage | ✅ |
@@ -125,7 +128,7 @@ Kedastral is **domain-agnostic** and works for any workload with predictable pat
 
 **Planned for v0.2+:**
 - Helm charts
-- Additional adapters (Kafka, HTTP)
+- Additional adapters (Kafka, CloudWatch, Datadog)
 - Advanced ML models (Prophet, SARIMA)
 - Grafana dashboards
 - CRDs and Operator

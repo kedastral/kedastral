@@ -1,0 +1,242 @@
+# Example workload configurations using the VictoriaMetrics Adapter
+#
+# The VictoriaMetrics adapter provides a Prometheus-compatible interface for
+# collecting metrics from VictoriaMetrics time-series databases. It uses the
+# /api/v1/query_range endpoint, which is compatible with both PromQL and MetricsQL.
+#
+# VictoriaMetrics vs Prometheus:
+# - Drop-in Prometheus replacement with better performance
+# - Supports standard PromQL plus extended MetricsQL functions
+# - Lower resource usage and faster queries
+# - Compatible API means same query syntax works with both adapters
+#
+# Use Cases:
+# - VictoriaMetrics single-node deployments
+# - VictoriaMetrics cluster deployments (vmselect endpoint)
+# - High-scale monitoring with better query performance
+# - Long-term metrics retention with efficient storage
+
+workloads:
+  # Example 1: Basic HTTP API with VictoriaMetrics single-node
+  - name: web-api
+    metric: http_requests_per_second
+
+    # VictoriaMetrics single-node default port is 8428
+    victoriaMetricsURL: http://victoria-metrics:8428
+    # Standard PromQL query works fine
+    victoriaMetricsQuery: sum(rate(http_requests_total{app="web-api"}[1m]))
+
+    # Forecast parameters
+    horizon: 30m      # How far ahead to predict (default: 30m)
+    step: 1m          # Granularity of predictions (default: 1m)
+    interval: 30s     # How often to generate forecasts (default: 30s)
+    window: 1h        # Historical data window for training (default: 30m)
+
+    # Model selection
+    model: baseline   # Options: baseline, arima
+
+    # Capacity planning policy
+    targetPerPod: 100.0              # Target metric value per pod
+    headroom: 1.2                     # Safety multiplier (1.2 = 20% headroom)
+    minReplicas: 2                    # Minimum pod count
+    maxReplicas: 50                   # Maximum pod count
+    upMaxFactorPerStep: 2.0           # Max scale-up factor per forecast step
+    downMaxPercentPerStep: 50         # Max scale-down percent per forecast step
+
+  # Example 2: VictoriaMetrics cluster (using vmselect)
+  - name: background-worker
+    metric: queue_depth
+
+    # VictoriaMetrics cluster vmselect default port is 8481
+    victoriaMetricsURL: http://vmselect.monitoring:8481/select/0/prometheus
+    victoriaMetricsQuery: sum(rabbitmq_queue_messages{queue="tasks"})
+
+    horizon: 1h
+    step: 5m
+    interval: 1m
+    window: 2h
+
+    model: baseline
+    targetPerPod: 50.0
+    headroom: 1.5
+    minReplicas: 1
+    maxReplicas: 20
+    upMaxFactorPerStep: 3.0
+    downMaxPercentPerStep: 30
+
+  # Example 3: Using MetricsQL rollup functions (VictoriaMetrics extended syntax)
+  - name: data-processor
+    metric: processing_lag_seconds
+
+    victoriaMetricsURL: http://victoria-metrics:8428
+    # MetricsQL rollup function for better aggregation
+    # rollup_rate is more accurate than rate() in some cases
+    victoriaMetricsQuery: max(rollup_rate(kafka_consumer_lag_seconds{topic="events"}[5m]))
+
+    horizon: 15m
+    step: 30s
+    interval: 15s
+    window: 30m
+
+    model: baseline
+    targetPerPod: 60.0
+    headroom: 1.3
+    minReplicas: 3
+    maxReplicas: 100
+    upMaxFactorPerStep: 2.5
+    downMaxPercentPerStep: 40
+
+  # Example 4: Using MetricsQL aggregation functions
+  - name: microservice-latency
+    metric: p99_latency_milliseconds
+
+    victoriaMetricsURL: http://victoria-metrics:8428
+    # histogram_quantile with MetricsQL optimizations
+    victoriaMetricsQuery: |
+      histogram_quantile(0.99,
+        sum(rate(http_request_duration_seconds_bucket{service="payments"}[5m])) by (le)
+      )
+
+    horizon: 20m
+    step: 1m
+    interval: 30s
+    window: 45m
+
+    model: baseline
+    targetPerPod: 500.0  # 500ms p99 latency target
+    headroom: 1.1
+    minReplicas: 5
+    maxReplicas: 30
+    upMaxFactorPerStep: 2.0
+    downMaxPercentPerStep: 30
+
+  # Example 5: Multi-tenant VictoriaMetrics with account selection
+  - name: tenant-api
+    metric: tenant_requests
+
+    # Multi-tenant VictoriaMetrics with accountID
+    victoriaMetricsURL: http://victoria-metrics:8428/select/42/prometheus
+    victoriaMetricsQuery: sum(rate(api_requests_total{tenant="acme-corp"}[1m]))
+
+    horizon: 30m
+    step: 1m
+    interval: 30s
+    window: 1h
+
+    model: baseline
+    targetPerPod: 200.0
+    headroom: 1.25
+    minReplicas: 2
+    maxReplicas: 40
+    upMaxFactorPerStep: 2.0
+    downMaxPercentPerStep: 40
+
+  # Example 6: Using MetricsQL's default_if_empty for sparse metrics
+  - name: batch-processor
+    metric: batch_queue_size
+
+    victoriaMetricsURL: http://victoria-metrics:8428
+    # default_if_empty ensures query returns 0 instead of NaN when metric doesn't exist
+    victoriaMetricsQuery: |
+      default_if_empty(
+        sum(batch_queue_depth{job="processor"}),
+        0
+      )
+
+    horizon: 2h
+    step: 5m
+    interval: 1m
+    window: 4h
+
+    model: baseline
+    targetPerPod: 100.0
+    headroom: 1.5
+    minReplicas: 0  # Can scale to zero with default_if_empty
+    maxReplicas: 15
+    upMaxFactorPerStep: 3.0
+    downMaxPercentPerStep: 50
+
+---
+# Example Kubernetes ConfigMap for VictoriaMetrics workloads
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kedastral-victoriametrics-workloads
+  namespace: kedastral
+data:
+  workloads.yaml: |
+    workloads:
+      - name: my-api
+        metric: http_rps
+        victoriaMetricsURL: http://victoria-metrics.monitoring.svc:8428
+        victoriaMetricsQuery: sum(rate(http_requests_total{app="my-api"}[1m]))
+
+        horizon: 30m
+        step: 1m
+        interval: 30s
+        window: 1h
+
+        model: baseline
+        targetPerPod: 100
+        headroom: 1.2
+        minReplicas: 2
+        maxReplicas: 50
+        upMaxFactorPerStep: 2.0
+        downMaxPercentPerStep: 50
+
+---
+# Example Deployment snippet showing environment variables
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kedastral-forecaster
+  namespace: kedastral
+spec:
+  template:
+    spec:
+      containers:
+      - name: forecaster
+        image: kedastral/forecaster:latest
+        env:
+        # VictoriaMetrics configuration via environment variables
+        - name: WORKLOAD
+          value: "my-api"
+        - name: METRIC
+          value: "http_rps"
+        - name: VICTORIA_METRICS_URL
+          value: "http://victoria-metrics.monitoring.svc:8428"
+        - name: VICTORIA_METRICS_QUERY
+          value: "sum(rate(http_requests_total{app=\"my-api\"}[1m]))"
+
+        # Forecast parameters
+        - name: HORIZON
+          value: "30m"
+        - name: STEP
+          value: "1m"
+        - name: INTERVAL
+          value: "30s"
+        - name: WINDOW
+          value: "1h"
+
+        # Model
+        - name: MODEL
+          value: "baseline"
+
+        # Capacity policy
+        - name: TARGET_PER_POD
+          value: "100"
+        - name: HEADROOM
+          value: "1.2"
+        - name: MIN_REPLICAS
+          value: "2"
+        - name: MAX_REPLICAS
+          value: "50"
+
+# Notes:
+# - VictoriaMetrics single-node typically runs on port 8428
+# - VictoriaMetrics cluster vmselect runs on port 8481
+# - Use /select/<accountID>/prometheus path for multi-tenant setups
+# - MetricsQL queries are backwards compatible with PromQL
+# - MetricsQL extensions: rollup_rate, default_if_empty, quantile_over_time, etc.
+# - All PromQL queries work unchanged with VictoriaMetrics adapter
+# - For best performance, use MetricsQL-specific functions when available
