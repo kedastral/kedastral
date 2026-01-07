@@ -49,19 +49,45 @@ HORIZON=24h
 
 ---
 
+### 🌊 [SARIMA Model](./sarima.md) — **Seasonal ARIMA for Repeating Patterns**
+
+Seasonal AutoRegressive Integrated Moving Average model for workloads with strong recurring patterns.
+
+**Best for:**
+- Hourly data with daily patterns (rush hours, business hours)
+- Daily data with weekly patterns (weekday vs weekend)
+- Strong repeating seasonal cycles
+- Workloads with both trend AND seasonality
+- At least 2 full seasonal periods of data
+
+**Quick start:**
+```bash
+MODEL=sarima
+SARIMA_P=1 SARIMA_D=1 SARIMA_Q=1    # Non-seasonal
+SARIMA_SP=1 SARIMA_SD=1 SARIMA_SQ=1 # Seasonal
+SARIMA_S=24                          # Daily pattern (hourly data)
+WINDOW=168h
+HORIZON=30m
+```
+
+[→ Full SARIMA Documentation](./sarima.md)
+
+---
+
 ## Model Comparison
 
-| Feature | Baseline | ARIMA |
-|---------|----------|-------|
-| **Setup Complexity** | ✅ Zero config | ⚙️ Requires p,d,q tuning |
-| **Pattern Detection** | Intra-day (hourly, daily) | Multi-day (weekly, monthly) |
-| **Training Speed** | ⚡ ~10ms | 🔄 ~100ms |
-| **Prediction Speed** | ⚡ ~10ms | 🔄 ~100ms |
-| **Min Training Data** | 3 hours | 1-7 days |
-| **Optimal Data Window** | 3-24 hours | 1-7 days |
-| **Memory Usage** | Low | Medium |
-| **Accuracy** | Good (auto-tuned) | Higher (if properly tuned) |
-| **Best Use Case** | 30-min spikes, daily cycles | Weekly traffic, monthly billing |
+| Feature | Baseline | ARIMA | SARIMA |
+|---------|----------|-------|--------|
+| **Setup Complexity** | ✅ Zero config | ⚙️ Medium (p,d,q) | 🔧 High (p,d,q,P,D,Q,s) |
+| **Pattern Detection** | Intra-day | Multi-day trends | Seasonal + trends |
+| **Training Speed** | ⚡ ~10ms | 🔄 ~100ms | 🐌 ~500ms |
+| **Prediction Speed** | ⚡ ~10ms | 🔄 ~100ms | 🔄 ~100ms |
+| **Min Training Data** | 3 hours | 1-7 days | 2 seasonal periods (2*s) |
+| **Optimal Data Window** | 3-24 hours | 1-7 days | 1-2 weeks |
+| **Memory Usage** | Low (~10MB) | Medium (~30MB) | High (~100MB) |
+| **Accuracy** | Good | Higher | Highest (seasonal) |
+| **Seasonality Handling** | Basic (hour-of-day) | ❌ | ✅ Statistical |
+| **Best Use Case** | Daily cycles | Weekly trends | Daily/weekly patterns |
 
 ## Choosing a Model
 
@@ -91,15 +117,49 @@ HORIZON=24h
 - Payment processor with month-end spikes
 - Gaming platform with weekly maintenance windows
 
+### Use SARIMA if:
+
+- 🌊 Your workload has **strong repeating patterns** (daily, weekly)
+- 📊 Both trend AND seasonality present
+- 🔬 You need the highest accuracy for seasonal forecasting
+- 💾 You have 2+ weeks of training data (2+ seasonal periods)
+- 🎯 Clear seasonal period (hourly→daily, daily→weekly)
+- 🧮 Willing to tune 7 parameters (p,d,q,P,D,Q,s)
+
+**Example scenarios:**
+- Web API with consistent daily rush hours (9am, 12pm, 5pm)
+- E-commerce with weekday business hours and weekend lulls
+- Batch processing with daily/weekly scheduled jobs
+- Gaming servers with evening/weekend player spikes
+- APIs with international timezone patterns
+
+### Decision Tree
+
+```
+Does your workload have patterns?
+│
+├─ NO → Use Baseline (it's fast and adaptive)
+│
+└─ YES → Is the pattern seasonal (repeating)?
+    │
+    ├─ NO (just trending) → Use ARIMA
+    │
+    └─ YES (repeating) → Do you have clear seasonal period?
+        │
+        ├─ NO → Use Baseline (built-in hour-of-day)
+        │
+        └─ YES (e.g., s=24, s=168) → Use SARIMA
+```
+
 ## Configuration Reference
 
 ### Shared Parameters
 
-These apply to both models:
+These apply to all models:
 
 | Variable | Flag | Default | Description |
 |----------|------|---------|-------------|
-| `MODEL` | `--model` | `baseline` | Model type: `baseline` or `arima` |
+| `MODEL` | `--model` | `baseline` | Model type: `baseline`, `arima`, or `sarima` |
 | `METRIC` | `--metric` | *required* | Metric name to forecast |
 | `STEP` | `--step` | `1m` | Time between predictions |
 | `HORIZON` | `--horizon` | `30m` | How far ahead to predict |
@@ -113,6 +173,18 @@ These apply to both models:
 | `ARIMA_P` | `--arima-p` | `0` (auto→1) | AutoRegressive order |
 | `ARIMA_D` | `--arima-d` | `0` (auto→1) | Differencing order |
 | `ARIMA_Q` | `--arima-q` | `0` (auto→1) | Moving Average order |
+
+### SARIMA-Specific Parameters
+
+| Variable | Flag | Default | Description |
+|----------|------|---------|-------------|
+| `SARIMA_P` | `--sarima-p` | `0` (auto→1) | Non-seasonal AR order |
+| `SARIMA_D` | `--sarima-d` | `0` (auto→1) | Non-seasonal differencing |
+| `SARIMA_Q` | `--sarima-q` | `0` (auto→1) | Non-seasonal MA order |
+| `SARIMA_SP` | `--sarima-sp` | `1` | Seasonal AR order (P) |
+| `SARIMA_SD` | `--sarima-sd` | `1` | Seasonal differencing (D) |
+| `SARIMA_SQ` | `--sarima-sq` | `1` | Seasonal MA order (Q) |
+| `SARIMA_S` | `--sarima-s` | `24` | Seasonal period (e.g., 24, 168) |
 
 ## Quick Start Examples
 
@@ -150,6 +222,30 @@ data:
   WINDOW: 14d
   STEP: 1h
   HORIZON: 24h
+  INTERVAL: 5m
+```
+
+### Example 3: SARIMA for Daily Seasonal Pattern
+
+```yaml
+# deploy/examples/sarima-daily-pattern.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kedastral-forecaster-config
+data:
+  MODEL: sarima
+  METRIC: http_requests_per_second
+  SARIMA_P: 1
+  SARIMA_D: 1
+  SARIMA_Q: 1
+  SARIMA_SP: 1
+  SARIMA_SD: 1
+  SARIMA_SQ: 1
+  SARIMA_S: 24      # Hourly data, daily pattern
+  WINDOW: 168h      # 1 week
+  STEP: 1m
+  HORIZON: 30m
   INTERVAL: 5m
 ```
 

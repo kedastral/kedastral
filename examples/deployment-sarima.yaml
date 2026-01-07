@@ -1,0 +1,247 @@
+# SARIMA Forecaster Deployment Example
+# This example demonstrates using Kedastral with the SARIMA (Seasonal ARIMA) forecasting model
+# for workloads with both trending AND strong seasonal patterns (e.g., hourly with daily/weekly cycles).
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kedastral-forecaster
+  namespace: default
+  labels:
+    app: kedastral
+    component: forecaster
+    model: sarima
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8081
+    targetPort: 8081
+    protocol: TCP
+    name: http
+  selector:
+    app: kedastral
+    component: forecaster
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kedastral-forecaster
+  namespace: default
+  labels:
+    app: kedastral
+    component: forecaster
+    model: sarima
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kedastral
+      component: forecaster
+  template:
+    metadata:
+      labels:
+        app: kedastral
+        component: forecaster
+        model: sarima
+    spec:
+      containers:
+      - name: forecaster
+        image: kedastral/forecaster:latest
+        imagePullPolicy: IfNotPresent
+        args:
+        # Workload identification
+        - --workload=my-api
+        - --metric=http_rps
+
+        # Model selection (SARIMA for daily seasonality with hourly data)
+        - --model=sarima
+
+        # Non-seasonal ARIMA parameters
+        - --sarima-p=1      # Non-seasonal AR order
+        - --sarima-d=1      # Non-seasonal differencing (trend)
+        - --sarima-q=1      # Non-seasonal MA order
+
+        # Seasonal parameters (daily pattern with hourly data)
+        - --sarima-sp=1     # Seasonal AR order
+        - --sarima-sd=1     # Seasonal differencing
+        - --sarima-sq=1     # Seasonal MA order
+        - --sarima-s=24     # Seasonal period (24 hours for daily pattern)
+
+        # For weekly pattern with hourly data, use: --sarima-s=168
+        # For daily pattern with 5-minute data, use: --sarima-s=288
+
+        # Prometheus source
+        - --prom-url=http://prometheus:9090
+        - --prom-query=sum(rate(http_requests_total{job="my-api"}[1m]))
+
+        # Forecast parameters
+        - --horizon=30m
+        - --step=1m
+        - --lead-time=10m
+        - --window=168h    # Need more data for SARIMA (at least 2 seasonal periods)
+        - --interval=5m    # Update frequency
+
+        # Capacity policy
+        - --target-per-pod=200
+        - --headroom=1.15
+        - --min=2
+        - --max=100
+        - --up-max-factor=2.0
+        - --down-max-percent=30
+
+        # Storage
+        - --storage=memory
+
+        # Logging
+        - --log-level=info
+        - --log-format=json
+
+        env:
+        # Alternative: configure via environment variables
+        - name: MODEL
+          value: "sarima"
+        - name: SARIMA_P
+          value: "1"
+        - name: SARIMA_D
+          value: "1"
+        - name: SARIMA_Q
+          value: "1"
+        - name: SARIMA_SP
+          value: "1"
+        - name: SARIMA_SD
+          value: "1"
+        - name: SARIMA_SQ
+          value: "1"
+        - name: SARIMA_S
+          value: "24"
+
+        ports:
+        - name: http
+          containerPort: 8081
+          protocol: TCP
+
+        resources:
+          requests:
+            memory: "256Mi"  # SARIMA needs more memory for seasonal state
+            cpu: "200m"      # More CPU for seasonal training
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 60  # SARIMA training can take longer
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+
+---
+# Scaler deployment (same as baseline example)
+apiVersion: v1
+kind: Service
+metadata:
+  name: kedastral-scaler
+  namespace: default
+  labels:
+    app: kedastral
+    component: scaler
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: grpc
+  selector:
+    app: kedastral
+    component: scaler
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kedastral-scaler
+  namespace: default
+  labels:
+    app: kedastral
+    component: scaler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kedastral
+      component: scaler
+  template:
+    metadata:
+      labels:
+        app: kedastral
+        component: scaler
+    spec:
+      containers:
+      - name: scaler
+        image: kedastral/scaler:latest
+        imagePullPolicy: IfNotPresent
+        args:
+        - --forecaster-url=http://kedastral-forecaster:8081
+        - --default-min=2
+        - --stale-after=120s
+        - --log-level=info
+
+        ports:
+        - name: grpc
+          containerPort: 8080
+          protocol: TCP
+
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+# KEDA ScaledObject pointing to the Kedastral scaler
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: my-api-kedastral
+  namespace: default
+spec:
+  scaleTargetRef:
+    name: my-api
+  minReplicaCount: 2
+  maxReplicaCount: 100
+  pollingInterval: 30
+  cooldownPeriod: 300
+
+  triggers:
+  - type: external
+    metadata:
+      scalerAddress: kedastral-scaler.default.svc.cluster.local:8080
+      workload: my-api
+      metric: http_rps

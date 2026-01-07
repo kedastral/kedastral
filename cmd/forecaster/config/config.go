@@ -73,6 +73,13 @@ type Config struct {
 	ARIMA_P               int
 	ARIMA_D               int
 	ARIMA_Q               int
+	SARIMA_P              int
+	SARIMA_D              int
+	SARIMA_Q              int
+	SARIMA_SP             int
+	SARIMA_SD             int
+	SARIMA_SQ             int
+	SARIMA_S              int
 	BYOMURL               string
 }
 
@@ -100,6 +107,13 @@ type WorkloadConfig struct {
 	ARIMA_P               int            `yaml:"arimaP,omitempty"`
 	ARIMA_D               int            `yaml:"arimaD,omitempty"`
 	ARIMA_Q               int            `yaml:"arimaQ,omitempty"`
+	SARIMA_P              int            `yaml:"sarimaP,omitempty"`
+	SARIMA_D              int            `yaml:"sarimaD,omitempty"`
+	SARIMA_Q              int            `yaml:"sarimaQ,omitempty"`
+	SARIMA_SP             int            `yaml:"sarimaSP,omitempty"`
+	SARIMA_SD             int            `yaml:"sarimaSD,omitempty"`
+	SARIMA_SQ             int            `yaml:"sarimaSQ,omitempty"`
+	SARIMA_S              int            `yaml:"sarimaS,omitempty"`
 	BYOMURL               string         `yaml:"byomURL,omitempty"`
 }
 
@@ -153,10 +167,17 @@ func ParseFlags() *Config {
 	flag.StringVar(&cfg.VictoriaMetricsQuery, "victoria-metrics-query", getEnv("VICTORIA_METRICS_QUERY", ""), "VictoriaMetrics query (single-workload mode, mutually exclusive with prom-query)")
 	flag.DurationVar(&cfg.Interval, "interval", getEnvDuration("INTERVAL", 30*time.Second), "Forecast interval")
 	flag.DurationVar(&cfg.Window, "window", getEnvDuration("WINDOW", 30*time.Minute), "Historical window")
-	flag.StringVar(&cfg.Model, "model", getEnv("MODEL", "baseline"), "Forecasting model: baseline, arima, or byom")
+	flag.StringVar(&cfg.Model, "model", getEnv("MODEL", "baseline"), "Forecasting model: baseline, arima, sarima, or byom")
 	flag.IntVar(&cfg.ARIMA_P, "arima-p", getEnvInt("ARIMA_P", 0), "ARIMA AR order (0=auto, default 1)")
 	flag.IntVar(&cfg.ARIMA_D, "arima-d", getEnvInt("ARIMA_D", 0), "ARIMA differencing order (0=auto, default 1)")
 	flag.IntVar(&cfg.ARIMA_Q, "arima-q", getEnvInt("ARIMA_Q", 0), "ARIMA MA order (0=auto, default 1)")
+	flag.IntVar(&cfg.SARIMA_P, "sarima-p", getEnvInt("SARIMA_P", 0), "SARIMA non-seasonal AR order (0=auto, default 1)")
+	flag.IntVar(&cfg.SARIMA_D, "sarima-d", getEnvInt("SARIMA_D", 0), "SARIMA non-seasonal differencing order (0=auto, default 1)")
+	flag.IntVar(&cfg.SARIMA_Q, "sarima-q", getEnvInt("SARIMA_Q", 0), "SARIMA non-seasonal MA order (0=auto, default 1)")
+	flag.IntVar(&cfg.SARIMA_SP, "sarima-sp", getEnvInt("SARIMA_SP", 1), "SARIMA seasonal AR order")
+	flag.IntVar(&cfg.SARIMA_SD, "sarima-sd", getEnvInt("SARIMA_SD", 1), "SARIMA seasonal differencing order")
+	flag.IntVar(&cfg.SARIMA_SQ, "sarima-sq", getEnvInt("SARIMA_SQ", 1), "SARIMA seasonal MA order")
+	flag.IntVar(&cfg.SARIMA_S, "sarima-s", getEnvInt("SARIMA_S", 24), "SARIMA seasonal period (e.g., 24 for hourly with daily pattern)")
 	flag.StringVar(&cfg.BYOMURL, "byom-url", getEnv("BYOM_URL", ""), "BYOM service URL (required when model=byom)")
 
 	flag.Parse()
@@ -259,6 +280,13 @@ func LoadWorkloads(ctx context.Context, cfg *Config) ([]WorkloadConfig, error) {
 		ARIMA_P:               cfg.ARIMA_P,
 		ARIMA_D:               cfg.ARIMA_D,
 		ARIMA_Q:               cfg.ARIMA_Q,
+		SARIMA_P:              cfg.SARIMA_P,
+		SARIMA_D:              cfg.SARIMA_D,
+		SARIMA_Q:              cfg.SARIMA_Q,
+		SARIMA_SP:             cfg.SARIMA_SP,
+		SARIMA_SD:             cfg.SARIMA_SD,
+		SARIMA_SQ:             cfg.SARIMA_SQ,
+		SARIMA_S:              cfg.SARIMA_S,
 		BYOMURL:               cfg.BYOMURL,
 	}
 
@@ -444,8 +472,8 @@ func validateWorkload(w *WorkloadConfig, index int) error {
 		w.Model = "baseline"
 	}
 
-	if w.Model != "baseline" && w.Model != "arima" && w.Model != "byom" {
-		return fmt.Errorf("workload %q: invalid model %q (must be baseline, arima, or byom)", w.Name, w.Model)
+	if w.Model != "baseline" && w.Model != "arima" && w.Model != "sarima" && w.Model != "byom" {
+		return fmt.Errorf("workload %q: invalid model %q (must be baseline, arima, sarima, or byom)", w.Name, w.Model)
 	}
 
 	if w.Model == "byom" && w.BYOMURL == "" {

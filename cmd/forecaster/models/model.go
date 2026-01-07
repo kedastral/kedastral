@@ -22,6 +22,20 @@ func New(cfg *config.Config, logger *slog.Logger) models.Model {
 		)
 		return models.NewARIMAModel(cfg.Metric, stepSec, horizonSec, cfg.ARIMA_P, cfg.ARIMA_D, cfg.ARIMA_Q)
 
+	case "sarima":
+		logger.Info("initializing SARIMA model",
+			"p", cfg.SARIMA_P,
+			"d", cfg.SARIMA_D,
+			"q", cfg.SARIMA_Q,
+			"P", cfg.SARIMA_SP,
+			"D", cfg.SARIMA_SD,
+			"Q", cfg.SARIMA_SQ,
+			"s", cfg.SARIMA_S,
+		)
+		return models.NewSARIMAModel(cfg.Metric, stepSec, horizonSec,
+			cfg.SARIMA_P, cfg.SARIMA_D, cfg.SARIMA_Q,
+			cfg.SARIMA_SP, cfg.SARIMA_SD, cfg.SARIMA_SQ, cfg.SARIMA_S)
+
 	case "baseline":
 		logger.Info("initializing baseline model")
 		return models.NewBaselineModel(cfg.Metric, stepSec, horizonSec)
@@ -52,6 +66,21 @@ func NewForWorkload(wc config.WorkloadConfig, logger *slog.Logger) models.Model 
 			"q", wc.ARIMA_Q,
 		)
 		return models.NewARIMAModel(wc.Metric, stepSec, horizonSec, wc.ARIMA_P, wc.ARIMA_D, wc.ARIMA_Q)
+
+	case "sarima":
+		logger.Info("initializing SARIMA model",
+			"workload", wc.Name,
+			"p", wc.SARIMA_P,
+			"d", wc.SARIMA_D,
+			"q", wc.SARIMA_Q,
+			"P", wc.SARIMA_SP,
+			"D", wc.SARIMA_SD,
+			"Q", wc.SARIMA_SQ,
+			"s", wc.SARIMA_S,
+		)
+		return models.NewSARIMAModel(wc.Metric, stepSec, horizonSec,
+			wc.SARIMA_P, wc.SARIMA_D, wc.SARIMA_Q,
+			wc.SARIMA_SP, wc.SARIMA_SD, wc.SARIMA_SQ, wc.SARIMA_S)
 
 	case "baseline":
 		logger.Info("initializing baseline model", "workload", wc.Name)
