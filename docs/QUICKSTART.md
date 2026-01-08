@@ -44,16 +44,16 @@ make help            # Show all available targets
 The forecaster generates predictions and exposes them via HTTP:
 
 ```bash
+ADAPTER_QUERY='sum(rate(http_requests_total{service="my-api"}[1m]))' \
+ADAPTER_URL=http://localhost:9090 \
 ./bin/forecaster \
   -workload=my-api \
   -metric=http_rps \
-  -prom-url=http://localhost:9090 \
-  -prom-query='sum(rate(http_requests_total{service="my-api"}[1m]))' \
+  -adapter=prometheus \
   -target-per-pod=100 \
   -headroom=1.2 \
   -min=2 \
   -max=50 \
-  -lead-time=5m \
   -log-level=info
 ```
 

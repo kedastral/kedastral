@@ -11,9 +11,11 @@ workloads:
     # Metric name (used in logs and snapshots)
     metric: http_requests_per_second
 
-    # Prometheus connection
-    prometheusURL: http://prometheus:9090
-    prometheusQuery: sum(rate(http_requests_total{app="web-api"}[1m]))
+    # Adapter configuration
+    adapter: prometheus
+    adapterConfig:
+      url: http://prometheus:9090
+      query: sum(rate(http_requests_total{app="web-api"}[1m]))
 
     # Forecast parameters
     horizon: 30m      # How far ahead to predict (default: 30m)
@@ -35,8 +37,10 @@ workloads:
   # Example 2: Queue-based worker with longer horizon
   - name: background-worker
     metric: queue_depth
-    prometheusURL: http://prometheus:9090
-    prometheusQuery: sum(rabbitmq_queue_messages{queue="tasks"})
+    adapter: prometheus
+    adapterConfig:
+      url: http://prometheus:9090
+      query: sum(rabbitmq_queue_messages{queue="tasks"})
 
     # Longer horizon for batch processing workloads
     horizon: 1h
@@ -55,8 +59,10 @@ workloads:
   # Example 3: Stream processor with ARIMA model
   - name: data-processor
     metric: processing_lag_seconds
-    prometheusURL: http://prometheus:9090
-    prometheusQuery: max(kafka_consumer_lag_seconds{topic="events"})
+    adapter: prometheus
+    adapterConfig:
+      url: http://prometheus:9090
+      query: max(kafka_consumer_lag_seconds{topic="events"})
 
     # Short interval for real-time processing
     horizon: 15m
@@ -80,5 +86,7 @@ workloads:
 # Notes:
 # - Workload names must be DNS-compatible (alphanumeric, dash, underscore, 1-253 chars)
 # - All durations use Go format: 30s, 5m, 1h, etc.
+# - Adapter types: prometheus, victoriametrics, http
+# - adapterConfig is a map of string key-value pairs specific to each adapter type
 # - arimaP/arimaD/arimaQ are only used when model=arima
 # - Set arimaP/D/Q to 0 for automatic parameter selection

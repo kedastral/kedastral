@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **Removed File-Based Configuration**: Eliminated file reading functionality to address gosec G304 security concern
+  - Removed `--config-file` flag and YAML-based workload configuration
+  - Removed `loadWorkloadsFromFile()` function that used `os.ReadFile()` with user-controlled path
+  - Prevents potential path traversal, arbitrary file reading, and symlink attacks
+  - Mitigates DoS risks from parsing large or malicious YAML files
+
+### Changed
+
+- **Architecture**: Enforced one-workload-per-deployment security model
+  - Each forecaster instance now manages exactly one workload via environment variables and flags
+  - Multiple workloads require deploying multiple forecaster instances (Helm-based pattern)
+  - Improved isolation, resource limits, and security boundaries per workload
+  - Aligns with 12-factor app principles and Kubernetes-native configuration
+- **Configuration**: Removed all YAML configuration parsing code
+  - Removed `AdapterConfig` and `ConfigFile` fields from Config struct
+  - Removed `context.Context` parameter from `LoadWorkloads()` (no longer needed)
+  - Removed YAML dependency (`gopkg.in/yaml.v3`)
+  - Simplified configuration to flags and environment variables only
+
+### Removed
+
+- `--config-file` flag (previously used for multi-workload YAML files)
+- `deploy/examples/workloads-*.yaml` configuration files
+- YAML parsing logic in `cmd/forecaster/config/config.go`
+- Multi-workload single-instance deployment pattern
+
+### Documentation
+
+- Updated all documentation to remove file-based configuration references
+- Added Helm-based multi-workload deployment patterns in DEPLOYMENT.md
+- Updated CONFIGURATION.md with environment variable examples
+- Clarified security benefits of one-workload-per-deployment architecture
+
 ## [0.1.5] - 2026-01-06
 
 ### Added

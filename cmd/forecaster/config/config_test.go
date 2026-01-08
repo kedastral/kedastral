@@ -185,15 +185,16 @@ func TestGetEnvDuration(t *testing.T) {
 }
 
 func TestConfig_Defaults(t *testing.T) {
-	// Reset flag package for testing
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 
-	// Set required flags
+	os.Setenv("ADAPTER_QUERY", "sum(rate(http_requests_total[1m]))")
+	defer os.Unsetenv("ADAPTER_QUERY")
+
 	os.Args = []string{
 		"cmd",
 		"-workload=test-api",
 		"-metric=http_rps",
-		"-prom-query=sum(rate(http_requests_total[1m]))",
+		"-adapter=prometheus",
 	}
 
 	cfg := ParseFlags()
@@ -235,14 +236,16 @@ func TestConfig_Defaults(t *testing.T) {
 }
 
 func TestConfig_CustomValues(t *testing.T) {
-	// Reset flag package for testing
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
+
+	os.Setenv("ADAPTER_QUERY", "custom_query")
+	defer os.Unsetenv("ADAPTER_QUERY")
 
 	os.Args = []string{
 		"cmd",
 		"-workload=my-api",
 		"-metric=custom_metric",
-		"-prom-query=custom_query",
+		"-adapter=prometheus",
 		"-listen=:9090",
 		"-horizon=1h",
 		"-step=5m",

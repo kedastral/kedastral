@@ -228,12 +228,13 @@ curl http://localhost:8081/healthz
 ```bash
 --workload=my-api            # Workload name
 --metric=http_rps            # Metric being forecasted
---prom-query='...'           # Prometheus query
+--adapter=prometheus         # Adapter type: prometheus, victoriametrics, or http
 ```
 
-**Multi-workload mode:**
+**Required environment variables for adapters:**
 ```bash
---config-file=workloads.yaml # Path to YAML config
+ADAPTER_QUERY='...'          # Query for prometheus/victoriametrics
+ADAPTER_URL='http://...'     # Optional: URL override (has defaults)
 ```
 
 ### Common Flags
@@ -264,11 +265,12 @@ See [../../docs/CONFIGURATION.md](../../docs/CONFIGURATION.md) for all options.
 make forecaster
 
 # Run with minimal config
+ADAPTER_QUERY='sum(rate(http_requests_total{service="my-api"}[1m]))' \
+ADAPTER_URL=http://localhost:9090 \
 ./bin/forecaster \
   --workload=my-api \
   --metric=http_rps \
-  --prom-url=http://localhost:9090 \
-  --prom-query='sum(rate(http_requests_total{service="my-api"}[1m]))' \
+  --adapter=prometheus \
   --target-per-pod=100 \
   --log-level=debug
 ```
@@ -280,42 +282,22 @@ make forecaster
 docker run -d -p 6379:6379 redis:7
 
 # Run forecaster with Redis
+ADAPTER_QUERY='sum(rate(http_requests_total{service="my-api"}[1m]))' \
+ADAPTER_URL=http://localhost:9090 \
 ./bin/forecaster \
   --workload=my-api \
   --metric=http_rps \
-  --prom-url=http://localhost:9090 \
-  --prom-query='...' \
+  --adapter=prometheus \
   --storage=redis \
   --redis-addr=localhost:6379 \
   --target-per-pod=100
 ```
 
-### Multi-Workload Mode
+## Managing Multiple Workloads
 
-Create `workloads.yaml`:
-```yaml
-workloads:
-  - name: api-frontend
-    metric: http_rps
-    prometheusQuery: 'sum(rate(http_requests_total{service="frontend"}[1m]))'
-    targetPerPod: 100
-    headroom: 1.2
-    minReplicas: 2
-    maxReplicas: 50
+The forecaster follows a **one-workload-per-deployment** architecture for security and isolation. To forecast multiple workloads, deploy multiple forecaster instances with different configurations.
 
-  - name: api-backend
-    metric: http_rps
-    prometheusQuery: 'sum(rate(http_requests_total{service="backend"}[1m]))'
-    targetPerPod: 200
-    headroom: 1.3
-    minReplicas: 3
-    maxReplicas: 100
-```
-
-Run:
-```bash
-./bin/forecaster --config-file=workloads.yaml --storage=redis
-```
+See [DEPLOYMENT.md](../../docs/DEPLOYMENT.md#managing-multiple-workloads) for Helm-based multi-deployment patterns.
 
 ## Testing
 
@@ -380,11 +362,15 @@ spec:
       containers:
       - name: forecaster
         image: kedastral/forecaster:latest
+        env:
+          - name: ADAPTER_QUERY
+            value: "sum(rate(http_requests_total{service=\"my-api\"}[1m]))"
+          - name: ADAPTER_URL
+            value: "http://prometheus:9090"
         args:
           - --workload=my-api
           - --metric=http_rps
-          - --prom-url=http://prometheus:9090
-          - --prom-query=sum(rate(http_requests_total{service="my-api"}[1m]))
+          - --adapter=prometheus
           - --target-per-pod=100
           - --headroom=1.2
           - --min=2

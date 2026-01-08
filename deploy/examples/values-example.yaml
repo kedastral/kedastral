@@ -35,9 +35,11 @@ forecaster:
     upMaxFactor: 2.0          # Max 2x scale-up per step
     downMaxPercent: 50        # Max 50% scale-down per step
 
-    # Prometheus configuration
-    promURL: "http://prometheus-server.monitoring.svc.cluster.local:80"
-    promQuery: 'sum(rate(http_requests_total{deployment="my-api"}[1m]))'
+    # Adapter configuration
+    adapter: prometheus       # Options: prometheus, victoriametrics, http
+    adapterConfig:
+      url: "http://prometheus-server.monitoring.svc.cluster.local:80"
+      query: 'sum(rate(http_requests_total{deployment="my-api"}[1m]))'
 
     # Storage backend
     storage: redis    # Use Redis for persistence

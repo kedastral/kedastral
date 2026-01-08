@@ -165,78 +165,211 @@ env:
 
 ## Multi-Workload Deployment
 
-For managing multiple workloads in a single forecaster instance:
+**Security Note:** Kedastral uses a one-workload-per-forecaster architecture for security and isolation. Each forecaster instance manages exactly one workload.
 
-### 1. Create Workloads ConfigMap
+For multiple workloads, deploy multiple forecaster instances. The recommended approach is using Helm to template deployments.
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kedastral-workloads
-data:
-  workloads.yaml: |
-    workloads:
-      - name: api-frontend
-        metric: http_rps
-        prometheusURL: http://prometheus:9090
-        prometheusQuery: 'sum(rate(http_requests_total{service="frontend"}[1m]))'
-        horizon: 30m
-        step: 1m
-        interval: 30s
-        window: 3h
-        model: baseline
-        targetPerPod: 100
-        headroom: 1.2
-        minReplicas: 2
-        maxReplicas: 50
-        upMaxFactorPerStep: 2.0
-        downMaxPercentPerStep: 50
+### Option 1: Manual Multiple Deployments
 
-      - name: api-backend
-        metric: http_rps
-        prometheusURL: http://prometheus:9090
-        prometheusQuery: 'sum(rate(http_requests_total{service="backend"}[1m]))'
-        horizon: 1h
-        step: 2m
-        interval: 1m
-        window: 6h
-        model: arima
-        arimaP: 2
-        arimaD: 1
-        arimaQ: 1
-        targetPerPod: 200
-        headroom: 1.3
-        minReplicas: 3
-        maxReplicas: 100
-        upMaxFactorPerStep: 1.5
-        downMaxPercentPerStep: 30
-```
-
-### 2. Mount ConfigMap in Forecaster
+Deploy separate forecaster instances for each workload:
 
 ```yaml
+---
+# Forecaster for frontend
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kedastral-forecaster
+  name: kedastral-forecaster-frontend
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kedastral
+      workload: frontend
   template:
+    metadata:
+      labels:
+        app: kedastral
+        workload: frontend
     spec:
       containers:
       - name: forecaster
-        args:
-          - --config-file=/etc/kedastral/workloads.yaml
-        volumeMounts:
-          - name: config
-            mountPath: /etc/kedastral
-      volumes:
-        - name: config
-          configMap:
-            name: kedastral-workloads
+        image: kedastral/forecaster:latest
+        env:
+        - name: WORKLOAD
+          value: "api-frontend"
+        - name: METRIC
+          value: "http_rps"
+        - name: PROM_QUERY
+          value: 'sum(rate(http_requests_total{service="frontend"}[1m]))'
+        - name: MODEL
+          value: "baseline"
+        - name: TARGET_PER_POD
+          value: "100"
+        - name: MIN_REPLICAS
+          value: "2"
+        - name: MAX_REPLICAS
+          value: "50"
+        ports:
+        - containerPort: 8081
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kedastral-forecaster-frontend
+spec:
+  ports:
+  - port: 8081
+  selector:
+    app: kedastral
+    workload: frontend
+---
+# Forecaster for backend
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kedastral-forecaster-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kedastral
+      workload: backend
+  template:
+    metadata:
+      labels:
+        app: kedastral
+        workload: backend
+    spec:
+      containers:
+      - name: forecaster
+        image: kedastral/forecaster:latest
+        env:
+        - name: WORKLOAD
+          value: "api-backend"
+        - name: METRIC
+          value: "http_rps"
+        - name: PROM_QUERY
+          value: 'sum(rate(http_requests_total{service="backend"}[1m]))'
+        - name: MODEL
+          value: "sarima"
+        - name: SARIMA_S
+          value: "24"
+        - name: TARGET_PER_POD
+          value: "200"
+        - name: MIN_REPLICAS
+          value: "3"
+        - name: MAX_REPLICAS
+          value: "100"
+        ports:
+        - containerPort: 8081
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kedastral-forecaster-backend
+spec:
+  ports:
+  - port: 8081
+  selector:
+    app: kedastral
+    workload: backend
 ```
 
-### 3. Create ScaledObjects for Each Workload
+### Option 2: Helm Template (Recommended)
+
+Create a Helm chart that templates multiple forecasters:
+
+**values.yaml:**
+```yaml
+workloads:
+  - name: frontend
+    metric: http_rps
+    promQuery: 'sum(rate(http_requests_total{service="frontend"}[1m]))'
+    model: baseline
+    targetPerPod: 100
+    minReplicas: 2
+    maxReplicas: 50
+
+  - name: backend
+    metric: http_rps
+    promQuery: 'sum(rate(http_requests_total{service="backend"}[1m]))'
+    model: sarima
+    sarimaS: 24
+    targetPerPod: 200
+    minReplicas: 3
+    maxReplicas: 100
+```
+
+**templates/forecaster-deployment.yaml:**
+```yaml
+{{- range .Values.workloads }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kedastral-forecaster-{{ .name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kedastral
+      component: forecaster
+      workload: {{ .name }}
+  template:
+    metadata:
+      labels:
+        app: kedastral
+        component: forecaster
+        workload: {{ .name }}
+    spec:
+      containers:
+      - name: forecaster
+        image: {{ $.Values.image.repository }}:{{ $.Values.image.tag }}
+        env:
+        - name: WORKLOAD
+          value: {{ .name | quote }}
+        - name: METRIC
+          value: {{ .metric | quote }}
+        {{- if .promQuery }}
+        - name: PROM_QUERY
+          value: {{ .promQuery | quote }}
+        {{- end }}
+        - name: MODEL
+          value: {{ .model | default "baseline" | quote }}
+        {{- if eq .model "sarima" }}
+        - name: SARIMA_S
+          value: {{ .sarimaS | default 24 | quote }}
+        {{- end }}
+        - name: TARGET_PER_POD
+          value: {{ .targetPerPod | quote }}
+        - name: MIN_REPLICAS
+          value: {{ .minReplicas | quote }}
+        - name: MAX_REPLICAS
+          value: {{ .maxReplicas | quote }}
+        ports:
+        - containerPort: 8081
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kedastral-forecaster-{{ .name }}
+spec:
+  ports:
+  - port: 8081
+  selector:
+    app: kedastral
+    component: forecaster
+    workload: {{ .name }}
+{{- end }}
+```
+
+**Deploy:**
+```bash
+helm install kedastral ./charts/kedastral -f values.yaml
+```
+
+### Create ScaledObjects for Each Workload
 
 ```yaml
 ---
@@ -266,6 +399,12 @@ spec:
         scalerAddress: kedastral-scaler:50051
         workload: api-backend
 ```
+
+**Benefits of this architecture:**
+- **Security:** No file system access, no config file vulnerabilities
+- **Isolation:** Workload failures don't affect other workloads
+- **Scalability:** Scale forecasters independently per workload
+- **Kubernetes-native:** Standard ConfigMap → env var pattern
 
 ## Resource Requirements
 

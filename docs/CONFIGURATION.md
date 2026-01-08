@@ -2,25 +2,17 @@
 
 This document provides a complete reference for all configuration options in Kedastral.
 
-## Configuration Modes
+## Architecture: One Workload Per Deployment
 
-Kedastral supports two configuration modes:
+**Security Note:** Kedastral follows a single-workload-per-deployment architecture for security and isolation. Each forecaster instance manages exactly one workload configured via flags or environment variables.
 
-### Single-Workload Mode (Legacy)
-Configure a single workload using command-line flags or environment variables.
+For managing multiple workloads, deploy multiple forecaster instances (recommended pattern: use Helm to template multiple deployments).
 
 ```bash
+# Each workload gets its own forecaster deployment
 ./bin/forecaster --workload=my-api --metric=http_rps --prom-query='...'
+./bin/forecaster --workload=batch-jobs --metric=queue_depth --prom-query='...'
 ```
-
-### Multi-Workload Mode
-Configure multiple workloads using a YAML configuration file.
-
-```bash
-./bin/forecaster --config-file=workloads.yaml
-```
-
-See [Multi-Workload Configuration](#multi-workload-configuration) for details.
 
 ## Configuration Precedence
 
@@ -260,83 +252,121 @@ See [deploy/examples/workloads-victoriametrics.yaml](../deploy/examples/workload
   --tls-ca-file=/etc/certs/ca.crt
 ```
 
-### Multi-Workload Configuration
+### Managing Multiple Workloads
 
-Enable multi-workload mode with a YAML configuration file:
+To manage multiple workloads, deploy multiple forecaster instances. The recommended pattern is using Helm to template multiple deployments.
 
-| Flag | Environment Variable | Default | Description |
-|------|---------------------|---------|-------------|
-| `--config-file` | `CONFIG_FILE` | _(empty)_ | Path to workloads YAML configuration file |
-
-**Example workloads.yaml:**
+**Helm values.yaml:**
 ```yaml
 workloads:
   - name: api-frontend
     metric: http_rps
-    prometheusURL: http://prometheus:9090
-    prometheusQuery: 'sum(rate(http_requests_total{service="frontend"}[1m]))'
-    horizon: 30m
-    step: 1m
-    interval: 30s
-    window: 3h
+    promQuery: 'sum(rate(http_requests_total{service="frontend"}[1m]))'
     model: baseline
     targetPerPod: 100
     headroom: 1.2
-    quantileLevel: p90  # or 0.90, or "0" to disable
     minReplicas: 2
     maxReplicas: 50
-    upMaxFactorPerStep: 2.0
-    downMaxPercentPerStep: 50
 
   - name: api-backend
     metric: http_rps
-    prometheusURL: http://prometheus:9090
-    prometheusQuery: 'sum(rate(http_requests_total{service="backend"}[1m]))'
-    horizon: 1h
-    step: 2m
-    interval: 1m
-    window: 6h
-    model: arima
-    arimaP: 2
-    arimaD: 1
-    arimaQ: 1
+    promQuery: 'sum(rate(http_requests_total{service="backend"}[1m]))'
+    model: sarima
+    sarimaS: 24
     targetPerPod: 200
-    headroom: 1.3
     minReplicas: 3
     maxReplicas: 100
-    upMaxFactorPerStep: 1.5
-    downMaxPercentPerStep: 30
 
-  # Example with VictoriaMetrics adapter
-  - name: data-processor
-    metric: processing_lag
-    victoriaMetricsURL: http://victoria-metrics:8428
-    victoriaMetricsQuery: 'max(rollup_rate(kafka_lag_seconds[5m]))'
-    horizon: 30m
-    step: 1m
-    interval: 30s
-    window: 2h
-    model: baseline
-    targetPerPod: 60
-    headroom: 1.2
-    minReplicas: 2
-    maxReplicas: 50
-    upMaxFactorPerStep: 2.5
-    downMaxPercentPerStep: 40
+  - name: batch-processor
+    metric: queue_depth
+    victoriaMetricsQuery: 'kafka_consumer_lag_seconds'
+    model: arima
+    arimaP: 2
+    targetPerPod: 50
+    minReplicas: 1
+    maxReplicas: 20
 ```
 
-**Usage:**
-```bash
-./bin/forecaster --config-file=workloads.yaml
+**Helm template (templates/forecaster-deployment.yaml):**
+```yaml
+{{- range .Values.workloads }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kedastral-forecaster-{{ .name }}
+  labels:
+    app: kedastral
+    component: forecaster
+    workload: {{ .name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kedastral
+      component: forecaster
+      workload: {{ .name }}
+  template:
+    metadata:
+      labels:
+        app: kedastral
+        component: forecaster
+        workload: {{ .name }}
+    spec:
+      containers:
+      - name: forecaster
+        image: kedastral/forecaster:latest
+        env:
+        - name: WORKLOAD
+          value: {{ .name | quote }}
+        - name: METRIC
+          value: {{ .metric | quote }}
+        - name: MODEL
+          value: {{ .model | default "baseline" | quote }}
+        {{- if .promQuery }}
+        - name: PROM_QUERY
+          value: {{ .promQuery | quote }}
+        {{- end }}
+        {{- if .victoriaMetricsQuery }}
+        - name: VICTORIA_METRICS_QUERY
+          value: {{ .victoriaMetricsQuery | quote }}
+        {{- end }}
+        - name: TARGET_PER_POD
+          value: {{ .targetPerPod | default 100 | quote }}
+        - name: MIN_REPLICAS
+          value: {{ .minReplicas | default 1 | quote }}
+        - name: MAX_REPLICAS
+          value: {{ .maxReplicas | default 100 | quote }}
+        # Add other env vars as needed
+        ports:
+        - containerPort: 8081
+          name: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kedastral-forecaster-{{ .name }}
+  labels:
+    app: kedastral
+    component: forecaster
+    workload: {{ .name }}
+spec:
+  ports:
+  - port: 8081
+    targetPort: 8081
+    name: http
+  selector:
+    app: kedastral
+    component: forecaster
+    workload: {{ .name }}
+{{- end }}
 ```
 
-**Validation Rules:**
-- Each workload must have a unique `name`
-- `name` must be alphanumeric with dash/underscore, 1-253 characters
-- `metric` is required
-- Must specify one data source: `prometheusQuery`, `victoriaMetricsQuery`, or `adapter` config
-- `step` must be ≤ `horizon`
-- `maxReplicas` must be ≥ `minReplicas`
+**Benefits of this approach:**
+- **Security:** No file system access, each workload isolated
+- **Scalability:** Scale forecasters independently per workload
+- **Reliability:** Failure isolation - one workload failure doesn't affect others
+- **Kubernetes-native:** Standard pattern using ConfigMaps/env vars
 
 ## Scaler Configuration
 
@@ -440,12 +470,17 @@ workloads:
   --log-level=debug
 ```
 
-### Production Setup (Multi-Workload + Redis + TLS)
+### Production Setup (Redis + TLS)
 
 ```bash
 # Start forecaster
 ./bin/forecaster \
-  --config-file=/etc/kedastral/workloads.yaml \
+  --workload=my-api \
+  --metric=http_rps \
+  --prom-url=http://prometheus:9090 \
+  --prom-query='sum(rate(http_requests_total{service="my-api"}[1m]))' \
+  --model=sarima \
+  --sarima-s=24 \
   --storage=redis \
   --redis-addr=redis:6379 \
   --redis-password=secret \
@@ -468,6 +503,8 @@ workloads:
   --log-level=info \
   --log-format=json
 ```
+
+**Note:** For multiple workloads in production, deploy multiple forecaster instances using Helm (see [Managing Multiple Workloads](#managing-multiple-workloads)).
 
 ## Environment Variables Only
 

@@ -72,10 +72,12 @@ spec:
           value: {{ .Values.forecaster.config.upMaxFactor | quote }}
         - name: DOWN_MAX_PERCENT
           value: {{ .Values.forecaster.config.downMaxPercent | quote }}
-        - name: PROM_URL
-          value: {{ .Values.forecaster.config.promURL | quote }}
-        - name: PROM_QUERY
-          value: {{ .Values.forecaster.config.promQuery | quote }}
+        - name: ADAPTER
+          value: {{ .Values.forecaster.config.adapter | quote }}
+        {{- range $key, $value := .Values.forecaster.config.adapterConfig }}
+        - name: ADAPTER_{{ $key | upper }}
+          value: {{ $value | quote }}
+        {{- end }}
         - name: STORAGE
           value: {{ .Values.forecaster.config.storage | quote }}
         {{- if eq .Values.forecaster.config.storage "redis" }}

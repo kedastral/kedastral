@@ -21,10 +21,11 @@ workloads:
   - name: web-api
     metric: http_requests_per_second
 
-    # VictoriaMetrics single-node default port is 8428
-    victoriaMetricsURL: http://victoria-metrics:8428
-    # Standard PromQL query works fine
-    victoriaMetricsQuery: sum(rate(http_requests_total{app="web-api"}[1m]))
+    # VictoriaMetrics adapter with single-node deployment (default port 8428)
+    adapter: victoriametrics
+    adapterConfig:
+      url: http://victoria-metrics:8428
+      query: sum(rate(http_requests_total{app="web-api"}[1m]))
 
     # Forecast parameters
     horizon: 30m      # How far ahead to predict (default: 30m)
@@ -47,9 +48,11 @@ workloads:
   - name: background-worker
     metric: queue_depth
 
-    # VictoriaMetrics cluster vmselect default port is 8481
-    victoriaMetricsURL: http://vmselect.monitoring:8481/select/0/prometheus
-    victoriaMetricsQuery: sum(rabbitmq_queue_messages{queue="tasks"})
+    # VictoriaMetrics cluster vmselect (default port 8481)
+    adapter: victoriametrics
+    adapterConfig:
+      url: http://vmselect.monitoring:8481/select/0/prometheus
+      query: sum(rabbitmq_queue_messages{queue="tasks"})
 
     horizon: 1h
     step: 5m
@@ -68,10 +71,12 @@ workloads:
   - name: data-processor
     metric: processing_lag_seconds
 
-    victoriaMetricsURL: http://victoria-metrics:8428
-    # MetricsQL rollup function for better aggregation
-    # rollup_rate is more accurate than rate() in some cases
-    victoriaMetricsQuery: max(rollup_rate(kafka_consumer_lag_seconds{topic="events"}[5m]))
+    adapter: victoriametrics
+    adapterConfig:
+      url: http://victoria-metrics:8428
+      # MetricsQL rollup function for better aggregation
+      # rollup_rate is more accurate than rate() in some cases
+      query: max(rollup_rate(kafka_consumer_lag_seconds{topic="events"}[5m]))
 
     horizon: 15m
     step: 30s
@@ -90,12 +95,14 @@ workloads:
   - name: microservice-latency
     metric: p99_latency_milliseconds
 
-    victoriaMetricsURL: http://victoria-metrics:8428
-    # histogram_quantile with MetricsQL optimizations
-    victoriaMetricsQuery: |
-      histogram_quantile(0.99,
-        sum(rate(http_request_duration_seconds_bucket{service="payments"}[5m])) by (le)
-      )
+    adapter: victoriametrics
+    adapterConfig:
+      url: http://victoria-metrics:8428
+      # histogram_quantile with MetricsQL optimizations
+      query: |
+        histogram_quantile(0.99,
+          sum(rate(http_request_duration_seconds_bucket{service="payments"}[5m])) by (le)
+        )
 
     horizon: 20m
     step: 1m
@@ -114,9 +121,11 @@ workloads:
   - name: tenant-api
     metric: tenant_requests
 
-    # Multi-tenant VictoriaMetrics with accountID
-    victoriaMetricsURL: http://victoria-metrics:8428/select/42/prometheus
-    victoriaMetricsQuery: sum(rate(api_requests_total{tenant="acme-corp"}[1m]))
+    # Multi-tenant VictoriaMetrics with accountID in URL
+    adapter: victoriametrics
+    adapterConfig:
+      url: http://victoria-metrics:8428/select/42/prometheus
+      query: sum(rate(api_requests_total{tenant="acme-corp"}[1m]))
 
     horizon: 30m
     step: 1m
@@ -135,13 +144,15 @@ workloads:
   - name: batch-processor
     metric: batch_queue_size
 
-    victoriaMetricsURL: http://victoria-metrics:8428
-    # default_if_empty ensures query returns 0 instead of NaN when metric doesn't exist
-    victoriaMetricsQuery: |
-      default_if_empty(
-        sum(batch_queue_depth{job="processor"}),
-        0
-      )
+    adapter: victoriametrics
+    adapterConfig:
+      url: http://victoria-metrics:8428
+      # default_if_empty ensures query returns 0 instead of NaN when metric doesn't exist
+      query: |
+        default_if_empty(
+          sum(batch_queue_depth{job="processor"}),
+          0
+        )
 
     horizon: 2h
     step: 5m
@@ -168,8 +179,10 @@ data:
     workloads:
       - name: my-api
         metric: http_rps
-        victoriaMetricsURL: http://victoria-metrics.monitoring.svc:8428
-        victoriaMetricsQuery: sum(rate(http_requests_total{app="my-api"}[1m]))
+        adapter: victoriametrics
+        adapterConfig:
+          url: http://victoria-metrics.monitoring.svc:8428
+          query: sum(rate(http_requests_total{app="my-api"}[1m]))
 
         horizon: 30m
         step: 1m
@@ -198,14 +211,18 @@ spec:
       - name: forecaster
         image: kedastral/forecaster:latest
         env:
-        # VictoriaMetrics configuration via environment variables
+        # Core configuration
         - name: WORKLOAD
           value: "my-api"
         - name: METRIC
           value: "http_rps"
-        - name: VICTORIA_METRICS_URL
+        - name: ADAPTER
+          value: "victoriametrics"
+
+        # Adapter configuration via ADAPTER_* environment variables
+        - name: ADAPTER_URL
           value: "http://victoria-metrics.monitoring.svc:8428"
-        - name: VICTORIA_METRICS_QUERY
+        - name: ADAPTER_QUERY
           value: "sum(rate(http_requests_total{app=\"my-api\"}[1m]))"
 
         # Forecast parameters

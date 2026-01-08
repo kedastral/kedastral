@@ -15,20 +15,22 @@
 // Single-workload mode (legacy, backward compatible):
 //
 // Using Prometheus:
+//	ADAPTER_QUERY='sum(rate(http_requests_total[1m]))' \
+//	ADAPTER_URL=http://prometheus:9090 \
 //	forecaster \
 //	  -workload=my-api \
 //	  -metric=http_rps \
-//	  -prom-url=http://prometheus:9090 \
-//	  -prom-query='sum(rate(http_requests_total[1m]))' \
+//	  -adapter=prometheus \
 //	  -target-per-pod=100 \
 //	  -min=2 -max=50
 //
 // Using VictoriaMetrics:
+//	ADAPTER_QUERY='sum(rate(http_requests_total[1m]))' \
+//	ADAPTER_URL=http://victoria-metrics:8428 \
 //	forecaster \
 //	  -workload=my-api \
 //	  -metric=http_rps \
-//	  -victoria-metrics-url=http://victoria-metrics:8428 \
-//	  -victoria-metrics-query='sum(rate(http_requests_total[1m]))' \
+//	  -adapter=victoriametrics \
 //	  -target-per-pod=100 \
 //	  -min=2 -max=50
 //
@@ -41,10 +43,16 @@
 //	CONFIG_FILE              - Path to multi-workload YAML config
 //	WORKLOAD                 - Workload name (single-workload mode)
 //	METRIC                   - Metric name (single-workload mode)
-//	PROM_URL                 - Prometheus server URL
-//	PROM_QUERY               - PromQL query (single-workload mode)
-//	VICTORIA_METRICS_URL     - VictoriaMetrics server URL
-//	VICTORIA_METRICS_QUERY   - VictoriaMetrics query (single-workload mode)
+//	ADAPTER                  - Adapter type: prometheus, victoriametrics, or http
+//	ADAPTER_QUERY            - Query for prometheus/victoriametrics adapters
+//	ADAPTER_URL              - URL for any adapter (defaults: prometheus=localhost:9090, vm=localhost:8428)
+//	ADAPTER_METHOD           - HTTP method for http adapter (default: GET)
+//	ADAPTER_VALUE_PATH       - JSON path to value for http adapter
+//	ADAPTER_TIMESTAMP_PATH   - JSON path to timestamp for http adapter
+//	ADAPTER_TIMESTAMP_FORMAT - Timestamp format for http adapter (default: rfc3339)
+//	ADAPTER_HEADERS          - JSON object of headers for http adapter
+//	ADAPTER_BODY             - Request body for http adapter
+//	ADAPTER_TEMPLATE_VARS    - JSON object of template variables for http adapter
 //	TLS_ENABLED              - Enable TLS for HTTP server (default: false)
 //	TLS_CERT_FILE            - TLS certificate file path
 //	TLS_KEY_FILE             - TLS private key file path
@@ -55,7 +63,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -91,7 +98,7 @@ func main() {
 	}
 
 	ctx := context.Background()
-	workloadConfigs, err := config.LoadWorkloads(ctx, cfg)
+	workloadConfigs, err := config.LoadWorkloads(cfg)
 	if err != nil {
 		log.Error("failed to load workloads", "error", err)
 		os.Exit(1)
@@ -110,11 +117,13 @@ func main() {
 
 	forecasters := make([]*WorkloadForecaster, 0, len(workloadConfigs))
 	for _, wc := range workloadConfigs {
-		adapter, err := buildAdapter(&wc, log)
+		adapter, err := adapters.New(wc.Adapter, wc.AdapterConfig, int(wc.Step.Seconds()))
 		if err != nil {
-			log.Error("failed to build adapter", "workload", wc.Name, "error", err)
+			log.Error("failed to create adapter", "workload", wc.Name, "error", err)
 			os.Exit(1)
 		}
+
+		log.Info("configured adapter", "workload", wc.Name, "kind", wc.Adapter)
 
 		model := models.NewForWorkload(wc, log)
 
@@ -222,55 +231,4 @@ func main() {
 	}
 
 	log.Info("shutdown complete")
-}
-
-// buildAdapter creates the appropriate adapter based on WorkloadConfig.
-func buildAdapter(wc *config.WorkloadConfig, log *slog.Logger) (adapters.Adapter, error) {
-	stepSeconds := int(wc.Step.Seconds())
-
-	// Prometheus adapter
-	if wc.PromQuery != "" {
-		log.Info("using Prometheus adapter", "workload", wc.Name, "url", wc.PromURL)
-		return &adapters.PrometheusAdapter{
-			ServerURL:   wc.PromURL,
-			Query:       wc.PromQuery,
-			StepSeconds: stepSeconds,
-		}, nil
-	}
-
-	// VictoriaMetrics adapter
-	if wc.VictoriaMetricsQuery != "" {
-		log.Info("using VictoriaMetrics adapter", "workload", wc.Name, "url", wc.VictoriaMetricsURL)
-		return &adapters.VictoriaMetricsAdapter{
-			ServerURL:   wc.VictoriaMetricsURL,
-			Query:       wc.VictoriaMetricsQuery,
-			StepSeconds: stepSeconds,
-		}, nil
-	}
-
-	// Generic HTTP adapter
-	if wc.AdapterConfig != nil {
-		if wc.AdapterConfig.Type != "http" {
-			return nil, fmt.Errorf("unsupported adapter type: %s", wc.AdapterConfig.Type)
-		}
-
-		log.Info("using HTTP adapter", "workload", wc.Name)
-		adapter, err := adapters.ParseHTTPAdapterConfig(wc.AdapterConfig.Config)
-		if err != nil {
-			return nil, fmt.Errorf("parse HTTP adapter config: %w", err)
-		}
-
-		// Override step seconds if not set in config
-		if adapter.StepSeconds == 0 {
-			adapter.StepSeconds = stepSeconds
-		}
-
-		if err := adapter.ValidateConfig(); err != nil {
-			return nil, fmt.Errorf("invalid HTTP adapter config: %w", err)
-		}
-
-		return adapter, nil
-	}
-
-	return nil, fmt.Errorf("no data source configured for workload %s", wc.Name)
 }

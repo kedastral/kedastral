@@ -20,8 +20,10 @@ forecaster:
     workloads:
       - name: web-api
         metric: http_requests_per_second
-        prometheusURL: http://prometheus:9090
-        prometheusQuery: sum(rate(http_requests_total{app="web-api"}[1m]))
+        adapter: prometheus
+        adapterConfig:
+          url: http://prometheus:9090
+          query: sum(rate(http_requests_total{app="web-api"}[1m]))
         horizon: 30m
         step: 1m
         interval: 30s
@@ -36,8 +38,10 @@ forecaster:
 
       - name: background-worker
         metric: queue_depth
-        prometheusURL: http://prometheus:9090
-        prometheusQuery: sum(rabbitmq_queue_messages{queue="tasks"})
+        adapter: prometheus
+        adapterConfig:
+          url: http://prometheus:9090
+          query: sum(rabbitmq_queue_messages{queue="tasks"})
         horizon: 1h
         step: 5m
         interval: 1m
