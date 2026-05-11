@@ -223,6 +223,74 @@ func TestGetSnapshot_JSONResponse(t *testing.T) {
 	}
 }
 
+func TestListWorkloads_Empty(t *testing.T) {
+	store := storage.NewMemoryStore()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	mux := SetupRoutes(store, 2*time.Minute, logger)
+
+	req := httptest.NewRequest(http.MethodGet, "/workloads", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status code = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	body := w.Body.String()
+	if !contains(body, `"workloads"`) {
+		t.Errorf("response missing workloads field, got %q", body)
+	}
+	if !contains(body, "[]") {
+		t.Errorf("expected empty array, got %q", body)
+	}
+}
+
+func TestListWorkloads_WithEntries(t *testing.T) {
+	store := storage.NewMemoryStore()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	for _, w := range []string{"api-1", "api-2"} {
+		if err := store.Put(context.Background(), storage.Snapshot{Workload: w}); err != nil {
+			t.Fatalf("Put(%s) error = %v", w, err)
+		}
+	}
+
+	mux := SetupRoutes(store, 2*time.Minute, logger)
+
+	req := httptest.NewRequest(http.MethodGet, "/workloads", nil)
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status code = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	body := rec.Body.String()
+	for _, name := range []string{"api-1", "api-2"} {
+		if !contains(body, name) {
+			t.Errorf("response missing workload %q, body = %q", name, body)
+		}
+	}
+}
+
+func TestListWorkloads_ContentType(t *testing.T) {
+	store := storage.NewMemoryStore()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	mux := SetupRoutes(store, 2*time.Minute, logger)
+
+	req := httptest.NewRequest(http.MethodGet, "/workloads", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	contentType := w.Header().Get("Content-Type")
+	if contentType != "application/json" {
+		t.Errorf("Content-Type = %q, want %q", contentType, "application/json")
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && findSubstring(s, substr))
 }

@@ -153,3 +153,49 @@ Scaler service name
 {{- define "kedastral.scaler.serviceName" -}}
 {{- printf "%s-scaler" (include "kedastral.fullname" .) }}
 {{- end }}
+
+{{/*
+MCP server labels
+*/}}
+{{- define "kedastral.mcpServer.labels" -}}
+helm.sh/chart: {{ include "kedastral.chart" . }}
+{{ include "kedastral.mcpServer.selectorLabels" . }}
+{{- if .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/component: mcp-server
+{{- with .Values.commonLabels }}
+{{ toYaml . }}
+{{- end }}
+{{- end }}
+
+{{/*
+MCP server selector labels
+*/}}
+{{- define "kedastral.mcpServer.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "kedastral.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: mcp-server
+{{- end }}
+
+{{/*
+MCP server image
+*/}}
+{{- define "kedastral.mcpServer.image" -}}
+{{- $registry := .Values.global.imageRegistry | default "" -}}
+{{- $repository := .Values.mcpServer.image.repository -}}
+{{- $tag := .Values.mcpServer.image.tag | default .Chart.AppVersion -}}
+{{- if $registry -}}
+{{- printf "%s/%s:%s" $registry $repository $tag -}}
+{{- else -}}
+{{- printf "%s:%s" $repository $tag -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+MCP server service name
+*/}}
+{{- define "kedastral.mcpServer.serviceName" -}}
+{{- printf "%s-mcp-server" (include "kedastral.fullname" .) }}
+{{- end }}

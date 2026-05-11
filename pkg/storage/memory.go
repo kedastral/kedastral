@@ -162,6 +162,24 @@ func (s *MemoryStore) GetLatest(ctx context.Context, workload string) (Snapshot,
 	return snapshot, found, nil
 }
 
+// List returns the names of all workloads currently stored.
+func (s *MemoryStore) List(ctx context.Context) ([]string, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	workloads := make([]string, 0, len(s.snapshots))
+	for workload := range s.snapshots {
+		workloads = append(workloads, workload)
+	}
+	return workloads, nil
+}
+
 // Len returns the number of snapshots currently stored.
 // This method is primarily useful for testing and metrics.
 //

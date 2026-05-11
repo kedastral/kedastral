@@ -258,6 +258,90 @@ func TestIsStale(t *testing.T) {
 	}
 }
 
+func TestForecasterClient_ListWorkloads_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/workloads" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]any{"workloads": []string{"api-1", "api-2"}}); err != nil {
+			t.Errorf("failed to encode response: %v", err)
+		}
+	}))
+	defer srv.Close()
+
+	c := NewForecasterClient(srv.URL)
+	workloads, err := c.ListWorkloads(context.Background())
+	if err != nil {
+		t.Fatalf("ListWorkloads() error = %v", err)
+	}
+	if len(workloads) != 2 {
+		t.Fatalf("len(workloads) = %d, want 2", len(workloads))
+	}
+	got := map[string]bool{workloads[0]: true, workloads[1]: true}
+	for _, w := range []string{"api-1", "api-2"} {
+		if !got[w] {
+			t.Errorf("missing workload %q in response", w)
+		}
+	}
+}
+
+func TestForecasterClient_ListWorkloads_Empty(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]any{"workloads": []string{}}); err != nil {
+			t.Errorf("failed to encode response: %v", err)
+		}
+	}))
+	defer srv.Close()
+
+	c := NewForecasterClient(srv.URL)
+	workloads, err := c.ListWorkloads(context.Background())
+	if err != nil {
+		t.Fatalf("ListWorkloads() error = %v", err)
+	}
+	if len(workloads) != 0 {
+		t.Errorf("expected empty slice, got %v", workloads)
+	}
+}
+
+func TestForecasterClient_ListWorkloads_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	c := NewForecasterClient(srv.URL)
+	_, err := c.ListWorkloads(context.Background())
+	if err == nil {
+		t.Fatal("expected error for server error")
+	}
+}
+
+func TestForecasterClient_ListWorkloads_InvalidURL(t *testing.T) {
+	c := NewForecasterClient("://invalid")
+	_, err := c.ListWorkloads(context.Background())
+	if err == nil {
+		t.Fatal("expected error for invalid URL")
+	}
+}
+
+func TestForecasterClient_ListWorkloads_ContextCancellation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+	}))
+	defer srv.Close()
+
+	c := NewForecasterClient(srv.URL)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := c.ListWorkloads(ctx)
+	if err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+}
+
 func TestForecasterClient_GetSnapshot_URLConstruction(t *testing.T) {
 	// Verify URL is constructed correctly with special characters
 	var capturedURL string

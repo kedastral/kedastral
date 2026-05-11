@@ -596,6 +596,101 @@ func TestMemoryStoreWithTTL_ConcurrentWithCleanup(t *testing.T) {
 	}
 }
 
+func TestMemoryStore_List_Empty(t *testing.T) {
+	store := NewMemoryStore()
+
+	workloads, err := store.List(context.Background())
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(workloads) != 0 {
+		t.Errorf("List() = %v, want empty slice", workloads)
+	}
+}
+
+func TestMemoryStore_List_SingleWorkload(t *testing.T) {
+	store := NewMemoryStore()
+
+	if err := store.Put(context.Background(), Snapshot{Workload: "api-1"}); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+
+	workloads, err := store.List(context.Background())
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(workloads) != 1 || workloads[0] != "api-1" {
+		t.Errorf("List() = %v, want [api-1]", workloads)
+	}
+}
+
+func TestMemoryStore_List_MultipleWorkloads(t *testing.T) {
+	store := NewMemoryStore()
+
+	expected := []string{"api-1", "api-2", "api-3"}
+	for _, w := range expected {
+		if err := store.Put(context.Background(), Snapshot{Workload: w}); err != nil {
+			t.Fatalf("Put(%s) error = %v", w, err)
+		}
+	}
+
+	workloads, err := store.List(context.Background())
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(workloads) != len(expected) {
+		t.Fatalf("List() returned %d workloads, want %d", len(workloads), len(expected))
+	}
+
+	got := make(map[string]bool, len(workloads))
+	for _, w := range workloads {
+		got[w] = true
+	}
+	for _, w := range expected {
+		if !got[w] {
+			t.Errorf("List() missing workload %q", w)
+		}
+	}
+}
+
+func TestMemoryStore_List_ContextCancellation(t *testing.T) {
+	store := NewMemoryStore()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := store.List(ctx)
+	if err == nil {
+		t.Fatal("List() should return error on cancelled context")
+	}
+}
+
+func TestMemoryStore_List_Concurrent(t *testing.T) {
+	store := NewMemoryStore()
+
+	for i := range 5 {
+		if err := store.Put(context.Background(), Snapshot{Workload: fmt.Sprintf("api-%d", i)}); err != nil {
+			t.Fatalf("Put() error = %v", err)
+		}
+	}
+
+	var wg sync.WaitGroup
+	for range 20 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			workloads, err := store.List(context.Background())
+			if err != nil {
+				t.Errorf("Concurrent List() error = %v", err)
+			}
+			if len(workloads) != 5 {
+				t.Errorf("Concurrent List() returned %d workloads, want 5", len(workloads))
+			}
+		}()
+	}
+	wg.Wait()
+}
+
 // Benchmark concurrent reads and writes
 func BenchmarkMemoryStore_ConcurrentAccess(b *testing.B) {
 	store := NewMemoryStore()

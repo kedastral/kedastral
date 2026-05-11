@@ -265,6 +265,60 @@ scaler:
   # Additional environment variables
   env: []
 
+# MCP server configuration
+mcpServer:
+  enabled: false
+
+  image:
+    repository: kedastral/mcp-server
+    pullPolicy: IfNotPresent
+    tag: "" # Defaults to Chart appVersion
+
+  replicaCount: 1
+
+  service:
+    type: ClusterIP
+    port: 8083
+    annotations: {}
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 20m
+      memory: 32Mi
+
+  config:
+    listen: ":8083"
+    # Public base URL used in SSE event streams. Set to the externally reachable
+    # address of this service (e.g. via ingress or load balancer).
+    baseURL: "http://kedastral-mcp-server:8083"
+    forecasterURL: "http://kedastral-forecaster:8081"
+    staleAfter: 5m
+    logLevel: info
+    logFormat: json
+
+  podAnnotations: {}
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    fsGroup: 65532
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  envFrom: []
+  env: []
+
 # ServiceAccount configuration
 serviceAccount:
   # Specifies whether a service account should be created

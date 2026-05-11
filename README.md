@@ -90,6 +90,7 @@ Kedastral is **domain-agnostic** and works for any workload with predictable pat
 ### Components
 - **[Forecaster](cmd/forecaster/)** - Prediction engine and capacity planner
 - **[Scaler](cmd/scaler/)** - KEDA External Scaler implementation
+- **[MCP Server](cmd/mcp-server/)** - AI assistant integration via Model Context Protocol
 
 ### Deep Dives
 - **[Forecasting Models](docs/models/)** - Baseline and ARIMA models
@@ -125,9 +126,9 @@ Kedastral is **domain-agnostic** and works for any workload with predictable pat
 | Comprehensive tests (81 tests) | ✅ |
 | Docker support | ✅ |
 | Kubernetes examples | ✅ |
+| MCP server (AI assistant integration) | ✅ |
 
 **Planned for v0.2+:**
-- Helm charts
 - Additional adapters (Kafka, CloudWatch, Datadog)
 - Advanced ML models (Prophet, SARIMA)
 - Grafana dashboards

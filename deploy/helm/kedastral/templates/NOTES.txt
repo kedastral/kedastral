@@ -20,6 +20,13 @@ Kedastral has been deployed with the following components:
   Lead Time: {{ .Values.scaler.config.leadTime }}
 {{- end }}
 
+{{- if .Values.mcpServer.enabled }}
+✓ MCP Server - AI assistant integration (SSE transport)
+  Service: {{ include "kedastral.mcpServer.serviceName" . }}
+  Port: {{ .Values.mcpServer.service.port }}
+  Base URL: {{ .Values.mcpServer.config.baseURL }}
+{{- end }}
+
 To get started:
 
 1. Check the status of your deployment:
@@ -55,6 +62,20 @@ spec:
       scalerAddress: {{ include "kedastral.scaler.serviceName" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.scaler.service.grpcPort }}
       workload: {{ .Values.forecaster.config.workload }}
 EOF
+
+{{- if .Values.mcpServer.enabled }}
+6. Connect an AI agent to the MCP server:
+   SSE endpoint: {{ .Values.mcpServer.config.baseURL }}/sse
+
+   Example Claude Desktop config (~/.claude/claude_desktop_config.json):
+   {
+     "mcpServers": {
+       "kedastral": {
+         "url": "{{ .Values.mcpServer.config.baseURL }}/sse"
+       }
+     }
+   }
+{{- end }}
 
 For more information:
 - Documentation: https://github.com/kedastral/kedastral
