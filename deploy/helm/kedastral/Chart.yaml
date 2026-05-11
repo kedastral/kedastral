@@ -2,8 +2,8 @@ apiVersion: v2
 name: kedastral
 description: A Helm chart for Kedastral - Predictive Autoscaling for KEDA
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.1.6
+appVersion: "0.1.6"
 keywords:
   - kubernetes
   - autoscaling
