@@ -24,4 +24,5 @@ type Snapshot struct {
 type Store interface {
 	Put(ctx context.Context, snapshot Snapshot) error
 	GetLatest(ctx context.Context, workload string) (Snapshot, bool, error)
+	List(ctx context.Context) ([]string, error)
 }

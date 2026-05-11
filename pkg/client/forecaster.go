@@ -119,6 +119,39 @@ func (c *ForecasterClient) GetSnapshot(ctx context.Context, workload string) (*S
 	}, nil
 }
 
+// ListWorkloads fetches the list of all workloads tracked by the forecaster.
+func (c *ForecasterClient) ListWorkloads(ctx context.Context) ([]string, error) {
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base URL: %w", err)
+	}
+	u.Path = "/workloads"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Workloads []string `json:"workloads"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return result.Workloads, nil
+}
+
 // IsStale checks if a snapshot is older than the specified duration.
 // This is a helper function for the scaler to determine staleness
 // based on the snapshot's GeneratedAt timestamp.

@@ -1,0 +1,102 @@
+{{- if .Values.mcpServer.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kedastral.mcpServer.serviceName" . }}
+  labels:
+    {{- include "kedastral.mcpServer.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.mcpServer.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kedastral.mcpServer.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ toYaml .Values.mcpServer.config | sha256sum }}
+        {{- with .Values.mcpServer.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "kedastral.mcpServer.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "kedastral.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.mcpServer.podSecurityContext | nindent 8 }}
+      containers:
+      - name: mcp-server
+        securityContext:
+          {{- toYaml .Values.mcpServer.securityContext | nindent 10 }}
+        image: {{ include "kedastral.mcpServer.image" . }}
+        imagePullPolicy: {{ .Values.mcpServer.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: 8083
+          protocol: TCP
+        env:
+        - name: MCP_TRANSPORT
+          value: "sse"
+        - name: MCP_LISTEN
+          value: {{ .Values.mcpServer.config.listen | quote }}
+        - name: MCP_BASE_URL
+          value: {{ .Values.mcpServer.config.baseURL | quote }}
+        - name: FORECASTER_URL
+          value: {{ .Values.mcpServer.config.forecasterURL | quote }}
+        - name: STALE_AFTER
+          value: {{ .Values.mcpServer.config.staleAfter | quote }}
+        - name: LOG_LEVEL
+          value: {{ .Values.mcpServer.config.logLevel | quote }}
+        - name: LOG_FORMAT
+          value: {{ .Values.mcpServer.config.logFormat | quote }}
+        {{- with .Values.mcpServer.env }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.mcpServer.envFrom }}
+        envFrom:
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          {{- toYaml .Values.mcpServer.resources | nindent 10 }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      {{- with .Values.mcpServer.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.mcpServer.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.mcpServer.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

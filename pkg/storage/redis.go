@@ -123,6 +123,29 @@ func (r *RedisStore) GetLatest(ctx context.Context, workload string) (Snapshot, 
 	return snapshot, true, nil
 }
 
+// List returns the names of all workloads that have snapshots stored in Redis.
+// It scans for keys matching the "kedastral:snapshot:*" pattern.
+func (r *RedisStore) List(ctx context.Context) ([]string, error) {
+	var workloads []string
+	var cursor uint64
+
+	for {
+		keys, next, err := r.client.Scan(ctx, cursor, "kedastral:snapshot:*", 100).Result()
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan redis keys: %w", err)
+		}
+		for _, key := range keys {
+			workloads = append(workloads, key[len("kedastral:snapshot:"):])
+		}
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+
+	return workloads, nil
+}
+
 // Close closes the Redis client connection.
 // It is safe to call multiple times (idempotent).
 func (r *RedisStore) Close() error {

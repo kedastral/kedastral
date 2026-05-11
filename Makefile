@@ -1,4 +1,4 @@
-.PHONY: all build test clean proto help forecaster scaler
+.PHONY: all build test clean proto help forecaster scaler mcp-server
 
 # Version can be set via environment variable or defaults to dev
 VERSION ?= dev
@@ -7,8 +7,8 @@ LDFLAGS := -X main.version=$(VERSION)
 # Default target
 all: build
 
-# Build both executables
-build: forecaster scaler
+# Build all executables
+build: forecaster scaler mcp-server
 
 # Build forecaster
 forecaster:
@@ -19,6 +19,11 @@ forecaster:
 scaler:
 	@echo "Building scaler..."
 	@go build -ldflags "$(LDFLAGS)" -o bin/scaler ./cmd/scaler
+
+# Build MCP server
+mcp-server:
+	@echo "Building mcp-server..."
+	@go build -ldflags "$(LDFLAGS)" -o bin/mcp-server ./cmd/mcp-server
 
 # Run all tests
 test:
@@ -91,9 +96,10 @@ tidy:
 help:
 	@echo "Kedastral Makefile targets:"
 	@echo ""
-	@echo "  make build           - Build both forecaster and scaler binaries"
+	@echo "  make build           - Build all binaries (forecaster, scaler, mcp-server)"
 	@echo "  make forecaster      - Build forecaster binary only"
 	@echo "  make scaler          - Build scaler binary only"
+	@echo "  make mcp-server      - Build mcp-server binary only"
 	@echo "  make test            - Run all tests"
 	@echo "  make test-coverage   - Run tests with coverage report"
 	@echo "  make proto           - Regenerate protobuf code"

@@ -41,10 +41,36 @@ func SetupRoutes(store storage.Store, staleAfter time.Duration, logger *slog.Log
 	// Forecast snapshot endpoint
 	mux.HandleFunc("/forecast/current", handleGetSnapshot(store, staleAfter, logger))
 
+	// Workload list endpoint
+	mux.HandleFunc("/workloads", handleListWorkloads(store, logger))
+
 	// Prometheus metrics endpoint
 	mux.Handle("/metrics", promhttp.Handler())
 
 	return mux
+}
+
+// handleListWorkloads returns a handler for GET /workloads.
+func handleListWorkloads(store storage.Store, logger *slog.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		workloads, err := store.List(ctx)
+		if err != nil {
+			logger.Error("failed to list workloads", "error", err)
+			httpx.WriteErrorMessage(w, http.StatusInternalServerError, "internal server error")
+			return
+		}
+
+		if workloads == nil {
+			workloads = []string{}
+		}
+
+		if err := httpx.WriteJSON(w, http.StatusOK, map[string]any{"workloads": workloads}); err != nil {
+			logger.Error("failed to write JSON response", "error", err)
+		}
+	}
 }
 
 // handleGetSnapshot returns a handler for GET /forecast/current?workload=<name>.
