@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-05-11
+
+### Added
+
+- **MCP Server**: AI assistant integration via Model Context Protocol (`cmd/mcp-server`)
+  - Three tools: `list_workloads`, `get_forecast`, `explain_decision`
+  - `stdio` transport for local AI clients (Claude Desktop, Cursor)
+  - `sse` transport for cluster deployments — long-running HTTP service
+  - Helm chart support: optional `mcpServer` deployment (disabled by default)
+- **Store `List()` method**: Added `List(ctx)` to the `Store` interface, `MemoryStore`, and `RedisStore`
+- **Forecaster `GET /workloads` endpoint**: Lists all workloads currently tracked by the forecaster
+- **Forecaster client `ListWorkloads()`**: New method on `ForecasterClient` to fetch tracked workloads
+
+### Fixed
+
+- `analyzeTrend` in MCP server now correctly identifies symmetric spike/dip patterns where first and last replica counts are equal but the midpoint differs
+
+## [0.1.5] - 2026-01-06 (moved from Unreleased)
+
 ### Security
 
 - **Removed File-Based Configuration**: Eliminated file reading functionality to address gosec G304 security concern
