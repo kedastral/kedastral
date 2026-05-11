@@ -104,11 +104,14 @@ with socketserver.TCPServer(("", PORT), PrometheusHandler) as httpd:
 		NetworkAliases: map[string][]string{
 			networkName: {"forecaster"},
 		},
+		Env: map[string]string{
+			"ADAPTER_URL":   promURL,
+			"ADAPTER_QUERY": `sum(rate(http_requests_total{service="test-api"}[1m]))`,
+		},
 		Cmd: []string{
 			"-workload=test-api",
 			"-metric=http_rps",
-			"-prom-url=" + promURL,
-			"-prom-query=sum(rate(http_requests_total{service=\"test-api\"}[1m]))",
+			"-adapter=prometheus",
 			"-target-per-pod=50",
 			"-headroom=1.2",
 			"-min=2",
