@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 // Config holds TLS certificate file paths for client or server configuration.
@@ -62,7 +63,7 @@ func NewServerTLSConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
 		return nil, err
 	}
 
-	caCert, err := os.ReadFile(caFile)
+	caCert, err := os.ReadFile(filepath.Clean(caFile))
 	if err != nil {
 		return nil, fmt.Errorf("read CA certificate: %w", err)
 	}
@@ -108,7 +109,7 @@ func NewClientTLSConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
 		return nil, fmt.Errorf("load client certificate: %w", err)
 	}
 
-	caCert, err := os.ReadFile(caFile)
+	caCert, err := os.ReadFile(filepath.Clean(caFile))
 	if err != nil {
 		return nil, fmt.Errorf("read CA certificate: %w", err)
 	}
