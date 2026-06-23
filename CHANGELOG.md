@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-06-24
+
+### Added
+
+- **Operator**: `ForecastPolicy` and `DataSource` CRDs reconciled by a controller embedded in the forecaster. Each `ForecastPolicy` drives an in-process forecast loop and generates a KEDA `ScaledObject` owned by the policy. Enabled with `forecaster.operator.enabled` (see [docs/OPERATOR.md](docs/OPERATOR.md)).
+- **Backtest harness** (`cmd/backtest`): walk-forward replay of a historical CSV through a model and the capacity planner, reporting forecast accuracy (MAE/RMSE/MAPE) and capacity outcomes (under-provisioned rate, mean over-provision). Supports baseline, ARIMA, SARIMA, and BYOM models.
+- **Operator-aware MCP tools**: `list_forecast_policies` and `get_forecast_policy`, auto-registered when the MCP server has Kubernetes access.
+- **Day/week duration units** (`pkg/durationx`): `d` and `w` are now accepted in all duration flags, environment variables, and `ForecastPolicy` fields (e.g. `7d`, `1w`).
+- **Grafana dashboard** (`deploy/grafana/`): workload-templated dashboard built from the `kedastral_*` metrics.
+- **kind operator demo** (`examples/kind-operator/`): one-command end-to-end demo of predictive scaling via the operator.
+- **CONTRIBUTING.md** with build, test, and codegen guidance.
+
+### Changed
+
+- Bumped Go to 1.26.
+- Reworked `README.md` and `docs/QUICKSTART.md` to make the operator the recommended path; added `docs/OPERATOR.md` and `docs/BACKTEST.md`.
+
+### Fixed
+
+- Corrected the project license references to MIT to match the `LICENSE` file.
+
 ## [0.1.6] - 2026-05-11
 
 ### Added
@@ -376,6 +397,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Kubernetes deployment examples
 - Documentation and getting started guide
 
+[0.1.7]: https://github.com/kedastral/kedastral/compare/v0.1.6...v0.1.7
+[0.1.6]: https://github.com/kedastral/kedastral/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/kedastral/kedastral/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/kedastral/kedastral/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/kedastral/kedastral/compare/v0.1.2...v0.1.3

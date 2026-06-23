@@ -20,7 +20,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.26'
 
       - name: Run unit tests
         run: go test ./... -v -short
@@ -50,7 +50,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.26'
 
       - name: Extract version from tag
         id: version
@@ -215,34 +215,40 @@ jobs:
           cat > release-notes.md << 'EOF'
           # Kedastral ${{ steps.version.outputs.VERSION }}
 
+          See the [CHANGELOG](https://github.com/${{ github.repository }}/blob/${{ steps.version.outputs.VERSION }}/CHANGELOG.md) for the full list of changes.
+
           ## Installation
 
-          ### Helm (Recommended)
+          ### Helm (recommended — operator mode)
           ```bash
-          # Download the Helm chart from release assets
-          helm install kedastral kedastral-${{ steps.version.outputs.VERSION }}.tgz \\
-            --set forecaster.config.workload=my-api \\
-            --set forecaster.config.promQuery='sum(rate(http_requests_total[1m]))'
+          # Requires KEDA in the cluster: https://keda.sh/docs/latest/deploy/
+          helm install kedastral kedastral-${{ steps.version.outputs.VERSION }}.tgz \
+            --set forecaster.operator.enabled=true \
+            --set forecaster.operator.scalerAddress=kedastral-scaler.default:50051
           ```
+
+          Then declare workloads with `DataSource` and `ForecastPolicy` resources (see Quick Start below).
 
           Or install from the repository:
           ```bash
           git clone https://github.com/${{ github.repository }}.git
           cd kedastral
           git checkout ${{ steps.version.outputs.VERSION }}
-          helm install kedastral ./deploy/helm/kedastral -f deploy/examples/values-example.yaml
+          helm install kedastral ./deploy/helm/kedastral \
+            --set forecaster.operator.enabled=true \
+            --set forecaster.operator.scalerAddress=kedastral-scaler.default:50051
           ```
 
-          ### Docker Images
+          ### Docker images
           ```bash
           docker pull ghcr.io/${{ github.repository }}/forecaster:${{ steps.version.outputs.VERSION }}
           docker pull ghcr.io/${{ github.repository }}/scaler:${{ steps.version.outputs.VERSION }}
           ```
 
-          ### Pre-built Binaries
-          Download the appropriate binary for your platform from the assets below.
+          ### Pre-built binaries
+          Download the binary for your platform from the assets below.
 
-          ### From Source
+          ### From source
           ```bash
           git clone https://github.com/${{ github.repository }}.git
           cd kedastral
@@ -250,44 +256,66 @@ jobs:
           make build
           ```
 
-          ## Quick Start
+          ## Quick Start (operator)
 
-          After installation, create a ScaledObject to enable predictive autoscaling:
+          Declare a data source and a policy; Kedastral runs the forecast loop and
+          generates the KEDA ScaledObject for you:
 
           ```yaml
           kubectl apply -f - <<EOFYAML
-          apiVersion: keda.sh/v1alpha1
-          kind: ScaledObject
+          apiVersion: kedastral.io/v1alpha1
+          kind: DataSource
           metadata:
-            name: my-api-scaledobject
+            name: prometheus
+          spec:
+            type: prometheus
+            config:
+              url: http://prometheus.monitoring:9090
+              query: sum(rate(http_requests_total{app="my-api"}[1m]))
+          ---
+          apiVersion: kedastral.io/v1alpha1
+          kind: ForecastPolicy
+          metadata:
+            name: my-api
           spec:
             scaleTargetRef:
               name: my-api
-            minReplicaCount: 2
-            maxReplicaCount: 50
-            pollingInterval: 30
-            triggers:
-            - type: external
-              metadata:
-                scalerAddress: kedastral-scaler.default.svc.cluster.local:50051
-                workload: my-api
+            metric: http_rps
+            dataSourceRef:
+              name: prometheus
+            model:
+              type: baseline
+            capacity:
+              targetPerPod: 100.0
+              minReplicas: 2
+              maxReplicas: 50
+            leadTime: 10m
           EOFYAML
           ```
 
+          ```bash
+          kubectl get forecastpolicies
+          kubectl get scaledobjects
+          ```
+
+          Prefer flags over CRDs? See the [Quick Start](./docs/QUICKSTART.md) for the non-operator path.
+
           ## Documentation
 
-          - [Helm Chart Configuration](./deploy/examples/README.md)
-          - [ScaledObject Examples](./deploy/examples/)
-          - [Architecture Documentation](./docs/architecture.md)
+          - [Quick Start](./docs/QUICKSTART.md)
+          - [Operator Guide](./docs/OPERATOR.md)
+          - [Configuration Reference](./docs/CONFIGURATION.md)
+          - [Architecture](./docs/ARCHITECTURE.md)
 
           ## What's Included
 
-          - Forecaster binary with Prometheus integration
-          - Scaler binary implementing KEDA External Scaler protocol
-          - Baseline statistical forecasting model
-          - Docker images for both components (amd64, arm64)
-          - Production-ready Helm chart
-          - Kubernetes deployment examples
+          - Forecaster with the embedded operator (ForecastPolicy/DataSource CRDs)
+          - Scaler implementing the KEDA External Scaler protocol
+          - Forecasting models: baseline, ARIMA, SARIMA, and BYOM
+          - Prometheus, VictoriaMetrics, and generic HTTP adapters
+          - MCP server for AI-assistant integration (Helm/source)
+          - Backtest tool for offline model evaluation (source)
+          - Multi-arch Docker images for the forecaster and scaler (amd64, arm64) and a production Helm chart
           EOF
           cat release-notes.md
 
