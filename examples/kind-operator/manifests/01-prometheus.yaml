@@ -1,0 +1,74 @@
+# Minimal standalone Prometheus for the demo. Uses static scrape targets (no
+# prometheus-operator / ServiceMonitors) to keep the kind cluster light and the
+# wiring obvious.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: kedastral-demo
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+    scrape_configs:
+      - job_name: simple-app
+        static_configs:
+          - targets: ["simple-app:8080"]
+      - job_name: kedastral-forecaster
+        static_configs:
+          - targets: ["kedastral-forecaster:8081"]
+      - job_name: kedastral-scaler
+        static_configs:
+          - targets: ["kedastral-scaler:8082"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: kedastral-demo
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.54.1
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.retention.time=2h
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: kedastral-demo
+spec:
+  selector:
+    app: prometheus
+  ports:
+    - port: 9090
+      targetPort: 9090

@@ -1,0 +1,263 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Kedastral predictive autoscaling: forecaster predictions, planned replicas, pipeline health, and scaler activity.",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "tags": ["kedastral", "autoscaling", "keda"],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Data source",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0,
+        "refresh": 1
+      },
+      {
+        "name": "workload",
+        "label": "Workload",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(kedastral_desired_replicas, workload)",
+        "refresh": 2,
+        "includeAll": false,
+        "multi": false,
+        "sort": 1
+      }
+    ]
+  },
+  "time": { "from": "now-3h", "to": "now" },
+  "refresh": "30s",
+  "title": "Kedastral - Predictive Autoscaling",
+  "uid": "kedastral-overview",
+  "panels": [
+    {
+      "type": "row",
+      "title": "Forecast",
+      "collapsed": false,
+      "id": 100,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Predicted metric value",
+      "id": 1,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "kedastral_predicted_value{workload=\"$workload\"}",
+          "legendFormat": "predicted",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Replicas: planned vs returned to KEDA",
+      "id": 2,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10, "stepInterval": true }, "unit": "none", "decimals": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "kedastral_desired_replicas{workload=\"$workload\"}",
+          "legendFormat": "forecaster desired",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "kedastral_scaler_desired_replicas_returned",
+          "legendFormat": "scaler returned",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "kube_horizontalpodautoscaler_status_desired_replicas{horizontalpodautoscaler=~\"keda-hpa-.*\"}",
+          "legendFormat": "HPA desired ({{horizontalpodautoscaler}})",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Forecast age (forecaster)",
+      "id": 3,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 9 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 60 },
+            { "color": "red", "value": 180 }
+          ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "kedastral_forecast_age_seconds{workload=\"$workload\"}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Forecast age seen (scaler)",
+      "id": 4,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 9 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 60 },
+            { "color": "red", "value": 180 }
+          ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "kedastral_scaler_forecast_age_seen_seconds",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Forecaster pipeline",
+      "collapsed": false,
+      "id": 101,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Pipeline stage duration (avg)",
+      "id": 5,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "rate(kedastral_adapter_collect_seconds_sum{workload=\"$workload\"}[5m]) / rate(kedastral_adapter_collect_seconds_count{workload=\"$workload\"}[5m])",
+          "legendFormat": "collect",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "rate(kedastral_model_predict_seconds_sum{workload=\"$workload\"}[5m]) / rate(kedastral_model_predict_seconds_count{workload=\"$workload\"}[5m])",
+          "legendFormat": "predict",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "rate(kedastral_capacity_compute_seconds_sum{workload=\"$workload\"}[5m]) / rate(kedastral_capacity_compute_seconds_count{workload=\"$workload\"}[5m])",
+          "legendFormat": "capacity",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Forecaster errors",
+      "id": 6,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 50 } }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum by (component, reason) (rate(kedastral_errors_total{workload=\"$workload\"}[5m]))",
+          "legendFormat": "{{component}}/{{reason}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Scaler",
+      "collapsed": false,
+      "id": 102,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 }
+    },
+    {
+      "type": "timeseries",
+      "title": "gRPC request rate",
+      "id": 7,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum by (method, status) (rate(kedastral_scaler_grpc_requests_total[5m]))",
+          "legendFormat": "{{method}} ({{status}})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "gRPC request duration (p99)",
+      "id": 8,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "histogram_quantile(0.99, sum by (le, method) (rate(kedastral_scaler_grpc_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{method}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Forecast fetch latency (p99) & errors",
+      "id": 9,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(kedastral_scaler_forecast_fetch_duration_seconds_bucket[5m])))",
+          "legendFormat": "fetch p99",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "rate(kedastral_scaler_forecast_fetch_errors_total[5m])",
+          "legendFormat": "fetch errors/s",
+          "refId": "B"
+        }
+      ]
+    }
+  ]
+}

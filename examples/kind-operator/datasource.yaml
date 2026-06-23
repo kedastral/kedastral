@@ -1,0 +1,10 @@
+apiVersion: kedastral.io/v1alpha1
+kind: DataSource
+metadata:
+  name: prometheus
+  namespace: kedastral-demo
+spec:
+  type: prometheus
+  config:
+    url: http://prometheus:9090
+    query: sum(rate(api_requests_total[1m]))

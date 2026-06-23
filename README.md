@@ -5,7 +5,7 @@
 [![Release](https://img.shields.io/github/v/release/kedastral/kedastral?color=blue)](https://github.com/kedastral/kedastral/releases/latest)
 [![Go Reference](https://pkg.go.dev/badge/github.com/kedastral/kedastral.svg)](https://pkg.go.dev/github.com/kedastral/kedastral)
 [![Go Report Card](https://goreportcard.com/badge/github.com/kedastral/kedastral)](https://goreportcard.com/report/github.com/kedastral/kedastral)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
@@ -47,21 +47,27 @@ flowchart LR
 
 ## Quick Start
 
+The recommended path is the **operator**: install the chart with operator mode, then
+declare workloads with `ForecastPolicy` / `DataSource` resources. Kedastral runs the
+forecast loop and generates the KEDA `ScaledObject` for you.
+
 ```bash
-# Build
-git clone https://github.com/kedastral/kedastral.git
-cd kedastral
-make build
+# Install (requires KEDA in the cluster)
+helm install kedastral deploy/helm/kedastral \
+  --set forecaster.operator.enabled=true \
+  --set forecaster.operator.scalerAddress=kedastral-scaler:50051
 
-# Deploy to Kubernetes
-kubectl apply -f examples/deployment.yaml
-kubectl apply -f examples/scaled-object.yaml
+# Declare a data source and a policy
+kubectl apply -f deploy/examples/datasource.yaml
+kubectl apply -f deploy/examples/forecastpolicy.yaml
 
-# Monitor
-kubectl logs -l component=forecaster -f
+# Watch it scale
+kubectl get forecastpolicies
+kubectl get scaledobjects
 ```
 
-**See the [Quick Start Guide](docs/QUICKSTART.md) for detailed instructions.**
+**See the [Quick Start Guide](docs/QUICKSTART.md) for detailed instructions and the
+[Operator Guide](docs/OPERATOR.md) for the CRD reference.**
 
 ---
 
@@ -83,6 +89,7 @@ Kedastral is **domain-agnostic** and works for any workload with predictable pat
 
 ### Getting Started
 - **[Quick Start Guide](docs/QUICKSTART.md)** - Get running in 10 minutes
+- **[Operator Guide](docs/OPERATOR.md)** - Declarative setup with ForecastPolicy/DataSource CRDs
 - **[Architecture Overview](docs/ARCHITECTURE.md)** - System design and components
 - **[Configuration Reference](docs/CONFIGURATION.md)** - All flags and environment variables
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment patterns
@@ -93,10 +100,10 @@ Kedastral is **domain-agnostic** and works for any workload with predictable pat
 - **[MCP Server](cmd/mcp-server/)** - AI assistant integration via Model Context Protocol
 
 ### Deep Dives
-- **[Forecasting Models](docs/models/)** - Baseline and ARIMA models
+- **[Forecasting Models](docs/models/)** - Baseline, ARIMA, and SARIMA models
 - **[BYOM (Bring Your Own Model)](docs/byom.md)** - Integrate custom models via HTTP
 - **[Capacity Planning](docs/planner/)** - Replica calculation and tuning
-- **[Observability](docs/OBSERVABILITY.md)** - Metrics and monitoring
+- **[Observability](docs/OBSERVABILITY.md)** - Metrics, monitoring, and the [Grafana dashboard](deploy/grafana/)
 - **[Security Audit](docs/SECURITY_AUDIT.md)** - Security review results
 
 ### Examples
@@ -117,33 +124,36 @@ Kedastral is **domain-agnostic** and works for any workload with predictable pat
 | Generic HTTP adapter | ✅ |
 | Baseline forecasting model | ✅ |
 | ARIMA forecasting model | ✅ |
+| SARIMA forecasting model | ✅ |
 | In-memory storage | ✅ |
 | Redis storage (HA) | ✅ |
 | Quantile forecasting | ✅ |
 | Multi-workload support | ✅ |
 | TLS support | ✅ |
 | Prometheus metrics | ✅ |
-| Comprehensive tests (81 tests) | ✅ |
+| Helm chart | ✅ |
+| Grafana dashboard | ✅ |
+| CRDs + Operator (ForecastPolicy/DataSource) | ✅ |
 | Docker support | ✅ |
 | Kubernetes examples | ✅ |
 | MCP server (AI assistant integration) | ✅ |
 
-**Planned for v0.2+:**
+**Planned next:**
 - Additional adapters (Kafka, CloudWatch, Datadog)
-- Advanced ML models (Prophet, SARIMA)
-- Grafana dashboards
-- CRDs and Operator
+- BYOM examples beyond Prophet (TensorFlow, etc.)
+- Backtesting harness for model evaluation
 
 ---
 
 ## Tech Stack
 
-- **Language:** Go 1.25+
+- **Language:** Go 1.26+
 - **Forecaster API:** HTTP/REST
 - **Scaler API:** gRPC (KEDA External Scaler protocol)
+- **Config:** ForecastPolicy/DataSource CRDs (operator) or flags/env
 - **Storage:** In-memory / Redis
 - **Metrics:** Prometheus
-- **Models:** Baseline (statistical), ARIMA (time-series)
+- **Models:** Baseline (statistical), ARIMA & SARIMA (time-series), BYOM (HTTP)
 
 ---
 
@@ -178,45 +188,42 @@ See the [Deployment Guide](docs/DEPLOYMENT.md) for production setup.
 
 ## Example Configuration
 
-**Forecaster:**
-```bash
-./bin/forecaster \
-  --workload=my-api \
-  --metric=http_rps \
-  --prom-url=http://prometheus:9090 \
-  --prom-query='sum(rate(http_requests_total{service="my-api"}[1m]))' \
-  --target-per-pod=100 \
-  --headroom=1.2 \
-  --min=2 \
-  --max=50 \
-  --horizon=30m \
-  --model=baseline
-```
+With the **operator**, a workload is a `DataSource` plus a `ForecastPolicy`. The
+operator runs the forecast loop and generates the matching KEDA `ScaledObject`:
 
-**Scaler:**
-```bash
-./bin/scaler \
-  --forecaster-url=http://kedastral-forecaster:8081 \
-  --lead-time=10m
-```
-
-**KEDA ScaledObject:**
 ```yaml
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
+apiVersion: kedastral.io/v1alpha1
+kind: DataSource
 metadata:
-  name: my-api-scaledobject
+  name: prometheus
+spec:
+  type: prometheus
+  config:
+    url: http://prometheus:9090
+    query: sum(rate(http_requests_total{service="my-api"}[1m]))
+---
+apiVersion: kedastral.io/v1alpha1
+kind: ForecastPolicy
+metadata:
+  name: my-api
 spec:
   scaleTargetRef:
     name: my-api
-  triggers:
-    - type: external
-      metadata:
-        scalerAddress: kedastral-scaler:50051
-        workload: my-api
+  metric: http_rps
+  dataSourceRef:
+    name: prometheus
+  model:
+    type: baseline
+  capacity:
+    targetPerPod: 100.0
+    headroom: 1.2
+    minReplicas: 2
+    maxReplicas: 50
+  leadTime: 10m
 ```
 
-See the [Configuration Reference](docs/CONFIGURATION.md) for all options.
+Prefer flags/env instead of CRDs? See the [Configuration Reference](docs/CONFIGURATION.md)
+and the [Operator Guide](docs/OPERATOR.md) for both modes.
 
 ---
 
@@ -233,7 +240,8 @@ Both components expose Prometheus metrics:
 - `kedastral_scaler_desired_replicas_returned` - Replicas returned to KEDA
 - `kedastral_scaler_forecast_fetch_duration_seconds` - Fetch latency
 
-See the [Observability Guide](docs/OBSERVABILITY.md) for complete metrics reference.
+A ready-to-import Grafana dashboard lives in [`deploy/grafana/`](deploy/grafana/). See
+the [Observability Guide](docs/OBSERVABILITY.md) for the complete metrics reference.
 
 ---
 
@@ -242,9 +250,9 @@ See the [Observability Guide](docs/OBSERVABILITY.md) for complete metrics refere
 | Version | Key Features | Status |
 |---------|--------------|--------|
 | **v0.1** | Forecaster + Scaler + Baseline/ARIMA + Redis | ✅ Complete |
-| **v0.2** | Helm charts + Grafana dashboards | 🔄 Planned |
-| **v0.3** | CRDs + Operator + Additional adapters | 🔄 Planned |
-| **v1.0** | Production hardening + Model registry | 🔄 Planned |
+| **v0.2** | Helm chart + Grafana dashboard + MCP server | ✅ Complete |
+| **v0.3** | CRDs + Operator (ForecastPolicy/DataSource) | ✅ Complete |
+| **v1.0** | Additional adapters + backtesting + model registry | 🔄 Planned |
 
 ---
 
@@ -263,7 +271,7 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 ## License & Governance
 
-- **License:** Apache-2.0
+- **License:** MIT
 - **Repository:** [github.com/kedastral/kedastral](https://github.com/kedastral/kedastral)
 - **Maintainers:** Community-governed, CNCF-style steering model
 

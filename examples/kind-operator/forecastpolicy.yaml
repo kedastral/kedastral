@@ -1,0 +1,28 @@
+apiVersion: kedastral.io/v1alpha1
+kind: ForecastPolicy
+metadata:
+  name: simple-app
+  namespace: kedastral-demo
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: simple-app
+  metric: http_rps
+  dataSourceRef:
+    name: prometheus
+  model:
+    type: baseline
+  forecast:
+    horizon: 15m
+    step: 1m
+    interval: 30s
+    window: 30m
+  capacity:
+    targetPerPod: 20.0
+    headroom: 1.2
+    minReplicas: 1
+    maxReplicas: 10
+    upMaxFactorPerStep: 2.0
+    downMaxPercentPerStep: 50
+  leadTime: 5m

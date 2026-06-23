@@ -318,7 +318,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for deployment guidance.
 
 | Component | Technology |
 |-----------|------------|
-| Language | Go 1.25+ |
+| Language | Go 1.26+ |
 | Forecaster API | HTTP/REST |
 | Scaler API | gRPC (KEDA protocol) |
 | Storage | In-memory / Redis |

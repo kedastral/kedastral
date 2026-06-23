@@ -1,0 +1,36 @@
+# Load generator from examples/simple-app. Drives a predictable traffic pattern so
+# the forecaster has a signal to predict. Change PATTERN to: constant, hourly-spike,
+# business-hours, sine-wave, or double-peak.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-generator
+  namespace: kedastral-demo
+  labels:
+    app: load-generator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: load-generator
+  template:
+    metadata:
+      labels:
+        app: load-generator
+    spec:
+      containers:
+        - name: generator
+          image: load-generator:demo
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TARGET_URL
+              value: "http://simple-app:8080"
+            - name: PATTERN
+              value: "sine-wave"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

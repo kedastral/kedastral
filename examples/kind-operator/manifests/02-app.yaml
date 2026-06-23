@@ -1,0 +1,63 @@
+# Sample app from examples/simple-app, run without the optional PostgreSQL backend
+# (DB_HOST unset). It exposes api_requests_total at /metrics, which Kedastral forecasts.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simple-app
+  namespace: kedastral-demo
+  labels:
+    app: simple-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simple-app
+  template:
+    metadata:
+      labels:
+        app: simple-app
+    spec:
+      containers:
+        - name: cmd
+          image: simple-app-cmd:demo
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PORT
+              value: "8080"
+          ports:
+            - containerPort: 8080
+              name: http
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: simple-app
+  namespace: kedastral-demo
+  labels:
+    app: simple-app
+spec:
+  selector:
+    app: simple-app
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
