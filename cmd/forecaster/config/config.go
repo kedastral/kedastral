@@ -38,8 +38,8 @@ import (
 
 // Config holds all forecaster configuration.
 type Config struct {
-	Listen    string
-	LogFormat string
+	Listen        string
+	LogFormat     string
 	LogLevel      string
 	Storage       string
 	RedisAddr     string
@@ -47,6 +47,9 @@ type Config struct {
 	RedisDB       int
 	RedisTTL      time.Duration
 	TLS           tls.Config
+
+	Operator      bool
+	ScalerAddress string
 
 	Workload              string
 	Metric                string
@@ -131,6 +134,9 @@ func ParseFlags() *Config {
 	flag.StringVar(&cfg.TLS.KeyFile, "tls-key-file", getEnv("TLS_KEY_FILE", ""), "TLS private key file")
 	flag.StringVar(&cfg.TLS.CAFile, "tls-ca-file", getEnv("TLS_CA_FILE", ""), "TLS CA certificate file for client verification")
 
+	flag.BoolVar(&cfg.Operator, "operator", getEnvBool("OPERATOR_MODE", false), "Run in operator mode: watch ForecastPolicy/DataSource CRDs instead of using workload flags")
+	flag.StringVar(&cfg.ScalerAddress, "scaler-address", getEnv("SCALER_ADDRESS", ""), "External scaler gRPC address (host:port) used in generated KEDA ScaledObjects (operator mode)")
+
 	flag.StringVar(&cfg.Workload, "workload", getEnv("WORKLOAD", ""), "Workload name (required in single-workload mode)")
 	flag.StringVar(&cfg.Metric, "metric", getEnv("METRIC", ""), "Metric name (required in single-workload mode)")
 	flag.StringVar(&cfg.Adapter, "adapter", getEnv("ADAPTER", ""), "Adapter type: prometheus, victoriametrics, or http")
@@ -161,6 +167,16 @@ func ParseFlags() *Config {
 	flag.Parse()
 
 	cfg.AdapterConfig = parseAdapterConfig()
+
+	// Operator mode reads workload definitions from ForecastPolicy CRDs, so the
+	// single-workload flags are not required.
+	if cfg.Operator {
+		if cfg.ScalerAddress == "" {
+			fmt.Fprintln(os.Stderr, "Error: --scaler-address is required in operator mode")
+			os.Exit(1)
+		}
+		return cfg
+	}
 
 	if cfg.Workload == "" {
 		fmt.Fprintln(os.Stderr, "Error: --workload is required")
@@ -321,6 +337,13 @@ func LoadWorkloads(cfg *Config) ([]WorkloadConfig, error) {
 	}
 
 	return []WorkloadConfig{workload}, nil
+}
+
+// ValidateWorkload validates and normalizes a workload configuration, applying the
+// same defaults used in flag mode. It is used by the operator controller when
+// translating a ForecastPolicy into a WorkloadConfig.
+func ValidateWorkload(w *WorkloadConfig) error {
+	return validateWorkload(w, 0)
 }
 
 func validateWorkload(w *WorkloadConfig, index int) error {

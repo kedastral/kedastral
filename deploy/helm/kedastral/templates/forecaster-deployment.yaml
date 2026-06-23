@@ -44,7 +44,28 @@ spec:
         env:
         - name: LISTEN
           value: {{ .Values.forecaster.config.listen | quote }}
-        {{- if .Values.forecaster.workloadsConfig.enabled }}
+        {{- if .Values.forecaster.operator.enabled }}
+        - name: OPERATOR_MODE
+          value: "true"
+        - name: SCALER_ADDRESS
+          value: {{ .Values.forecaster.operator.scalerAddress | quote }}
+        - name: STORAGE
+          value: {{ .Values.forecaster.config.storage | quote }}
+        {{- if eq .Values.forecaster.config.storage "redis" }}
+        - name: REDIS_ADDR
+          value: {{ .Values.forecaster.config.redis.addr | quote }}
+        - name: REDIS_PASSWORD
+          value: {{ .Values.forecaster.config.redis.password | quote }}
+        - name: REDIS_DB
+          value: {{ .Values.forecaster.config.redis.db | quote }}
+        - name: REDIS_TTL
+          value: {{ .Values.forecaster.config.redis.ttl | quote }}
+        {{- end }}
+        - name: LOG_LEVEL
+          value: {{ .Values.forecaster.config.logLevel | quote }}
+        - name: LOG_FORMAT
+          value: {{ .Values.forecaster.config.logFormat | quote }}
+        {{- else if .Values.forecaster.workloadsConfig.enabled }}
         - name: CONFIG_FILE
           value: "/etc/kedastral/workloads.yaml"
         {{- else }}

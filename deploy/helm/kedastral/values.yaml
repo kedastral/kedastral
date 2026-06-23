@@ -31,6 +31,14 @@ forecaster:
       cpu: 100m
       memory: 128Mi
 
+  # Operator mode: reconcile ForecastPolicy/DataSource CRDs instead of static config.
+  # When enabled, single-workload config and workloadsConfig are ignored; workloads
+  # are defined by ForecastPolicy resources and a KEDA ScaledObject is generated for each.
+  operator:
+    enabled: false
+    # gRPC address of the scaler service, embedded in generated KEDA ScaledObjects.
+    scalerAddress: "kedastral-scaler:50051"
+
   # Forecaster configuration
   config:
     # Server listen address

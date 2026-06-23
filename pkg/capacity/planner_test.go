@@ -114,7 +114,7 @@ func TestToReplicas_Quantiles(t *testing.T) {
 	}
 	forecast := []float64{100, 110, 105, 115, 95}
 	quantiles := map[float64][]float64{
-		0.50: {100, 110, 105, 115, 95}, // median
+		0.50: {100, 110, 105, 115, 95},  // median
 		0.90: {130, 143, 136, 150, 124}, // p90 - higher than mean + headroom
 	}
 	got := ToReplicas(2, forecast, 60, p, quantiles)

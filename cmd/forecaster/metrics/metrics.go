@@ -18,9 +18,33 @@
 package metrics
 
 import (
+	"sync"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
+
+var (
+	registryMu sync.Mutex
+	registry   = make(map[string]*Metrics)
+)
+
+// GetOrCreate returns the metrics for a workload, creating and registering them on
+// first use and returning the existing instance afterwards. This makes it safe to
+// call when a workload forecaster is rebuilt at runtime (operator mode), where
+// calling New again would panic on duplicate Prometheus registration.
+func GetOrCreate(workload string) *Metrics {
+	registryMu.Lock()
+	defer registryMu.Unlock()
+
+	if m, ok := registry[workload]; ok {
+		return m
+	}
+
+	m := New(workload)
+	registry[workload] = m
+	return m
+}
 
 // Metrics holds all Prometheus metrics for the forecaster.
 type Metrics struct {

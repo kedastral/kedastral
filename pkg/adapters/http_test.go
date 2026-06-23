@@ -525,7 +525,7 @@ func TestHTTPAdapter_DefaultMethod(t *testing.T) {
 	defer server.Close()
 
 	adapter := &HTTPAdapter{
-		URL:             server.URL,
+		URL: server.URL,
 		// Method not set - should default to GET
 		ValuePath:       "data.#.val",
 		TimestampPath:   "data.#.ts",

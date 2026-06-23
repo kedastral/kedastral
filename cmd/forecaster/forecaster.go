@@ -46,10 +46,26 @@ type WorkloadForecaster struct {
 }
 
 // MultiForecaster manages multiple workload forecasters running concurrently.
+//
+// Workloads can be registered up front (legacy flag mode) or added and removed at
+// runtime (operator mode) via Upsert and Remove. Each running workload has its own
+// cancelable context derived from the base context passed to Start, so removing one
+// workload does not affect the others.
 type MultiForecaster struct {
-	workloads map[string]*WorkloadForecaster
-	store     storage.Store
-	logger    *slog.Logger
+	store  storage.Store
+	logger *slog.Logger
+
+	mu      sync.Mutex
+	baseCtx context.Context
+	started bool
+	running map[string]*managedForecaster
+	wg      sync.WaitGroup
+}
+
+// managedForecaster tracks a workload forecaster and the cancel function for its goroutine.
+type managedForecaster struct {
+	forecaster *WorkloadForecaster
+	cancel     context.CancelFunc
 }
 
 // NewWorkloadForecaster creates a new forecaster for a single workload.
@@ -86,62 +102,126 @@ func NewWorkloadForecaster(
 }
 
 // NewMultiForecaster creates a new multi-workload forecaster.
+// The initial workloads are registered but not started until Start (or Run) is called.
+// Operator mode typically passes nil and registers workloads later via Upsert.
 func NewMultiForecaster(workloads []*WorkloadForecaster, store storage.Store, logger *slog.Logger) *MultiForecaster {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
-	wm := make(map[string]*WorkloadForecaster)
+	running := make(map[string]*managedForecaster)
 	for _, wf := range workloads {
-		wm[wf.name] = wf
+		running[wf.name] = &managedForecaster{forecaster: wf}
 	}
 
 	return &MultiForecaster{
-		workloads: wm,
-		store:     store,
-		logger:    logger,
+		store:   store,
+		logger:  logger,
+		running: running,
 	}
 }
 
-// Run executes all workload forecasters concurrently until context is canceled.
+// Start begins running all registered workload forecasters and returns immediately.
+// Workloads registered afterwards via Upsert are launched as they arrive. The base
+// context governs the lifetime of every workload goroutine.
+func (mf *MultiForecaster) Start(ctx context.Context) {
+	mf.mu.Lock()
+	defer mf.mu.Unlock()
+
+	mf.baseCtx = ctx
+	mf.started = true
+	mf.logger.Info("starting multi-workload forecaster", "workloads", len(mf.running))
+
+	for name, managed := range mf.running {
+		mf.launch(name, managed)
+	}
+}
+
+// launch starts the goroutine for a managed forecaster. The caller must hold mf.mu
+// and mf.started must be true.
+func (mf *MultiForecaster) launch(name string, managed *managedForecaster) {
+	workloadCtx, cancel := context.WithCancel(mf.baseCtx)
+	managed.cancel = cancel
+
+	mf.wg.Add(1)
+	go func() {
+		defer mf.wg.Done()
+		if err := managed.forecaster.Run(workloadCtx); err != nil && err != context.Canceled {
+			mf.logger.Error("workload forecaster error", "workload", name, "error", err)
+		}
+	}()
+}
+
+// Upsert registers or replaces a workload forecaster. If a forecaster with the same
+// name is already running, it is canceled and replaced. Safe for concurrent use.
+func (mf *MultiForecaster) Upsert(forecaster *WorkloadForecaster) {
+	mf.mu.Lock()
+	defer mf.mu.Unlock()
+
+	name := forecaster.name
+	if existing, ok := mf.running[name]; ok && existing.cancel != nil {
+		existing.cancel()
+	}
+
+	managed := &managedForecaster{forecaster: forecaster}
+	mf.running[name] = managed
+
+	if mf.started {
+		mf.launch(name, managed)
+	}
+}
+
+// Remove stops and unregisters a workload forecaster and deletes its snapshot from
+// the store. It is a no-op if the workload is not registered. Safe for concurrent use.
+func (mf *MultiForecaster) Remove(name string) {
+	mf.mu.Lock()
+	managed, ok := mf.running[name]
+	if ok {
+		if managed.cancel != nil {
+			managed.cancel()
+		}
+		delete(mf.running, name)
+	}
+	mf.mu.Unlock()
+
+	if !ok {
+		return
+	}
+
+	if deleter, ok := mf.store.(interface{ Delete(string) bool }); ok {
+		deleter.Delete(name)
+	}
+	mf.logger.Info("removed workload forecaster", "workload", name)
+}
+
+// Run starts all registered workload forecasters and blocks until the context is
+// canceled and every workload goroutine has exited. Used by legacy flag mode.
 func (mf *MultiForecaster) Run(ctx context.Context) error {
-	if len(mf.workloads) == 0 {
+	mf.mu.Lock()
+	empty := len(mf.running) == 0
+	mf.mu.Unlock()
+	if empty {
 		return fmt.Errorf("no workloads configured")
 	}
 
-	mf.logger.Info("starting multi-workload forecaster", "workloads", len(mf.workloads))
+	mf.Start(ctx)
 
-	var wg sync.WaitGroup
-	errCh := make(chan error, len(mf.workloads))
-
-	for name, wf := range mf.workloads {
-		wg.Add(1)
-		go func(name string, wf *WorkloadForecaster) {
-			defer wg.Done()
-			if err := wf.Run(ctx); err != nil && err != context.Canceled {
-				errCh <- fmt.Errorf("workload %q: %w", name, err)
-			}
-		}(name, wf)
-	}
-
-	wg.Wait()
-	close(errCh)
-
-	var firstErr error
-	for err := range errCh {
-		if firstErr == nil {
-			firstErr = err
-		}
-		mf.logger.Error("workload forecaster error", "error", err)
-	}
-
+	<-ctx.Done()
+	mf.wg.Wait()
 	mf.logger.Info("multi-workload forecaster stopped")
-	return firstErr
+	return ctx.Err()
 }
 
 // GetStore returns the shared storage backend.
 func (mf *MultiForecaster) GetStore() storage.Store {
 	return mf.store
+}
+
+// Len returns the number of registered workload forecasters. Safe for concurrent use.
+func (mf *MultiForecaster) Len() int {
+	mf.mu.Lock()
+	defer mf.mu.Unlock()
+	return len(mf.running)
 }
 
 // Run executes the forecast loop for this workload with panic recovery and graceful shutdown.

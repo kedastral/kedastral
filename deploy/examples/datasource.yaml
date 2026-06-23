@@ -1,0 +1,14 @@
+# DataSource describes a metrics backend that ForecastPolicies collect from.
+# Multiple ForecastPolicies in the same namespace can reference one DataSource.
+apiVersion: kedastral.io/v1alpha1
+kind: DataSource
+metadata:
+  name: prometheus
+  namespace: default
+spec:
+  # Adapter kind: prometheus, victoriametrics, or http.
+  type: prometheus
+  # Adapter-specific configuration. Keys map directly to the adapter factory.
+  config:
+    url: http://prometheus.monitoring:9090
+    query: sum(rate(http_requests_total{app="web-api"}[1m]))

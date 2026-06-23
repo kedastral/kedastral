@@ -250,11 +250,11 @@ func TestForecaster_StoreSnapshot(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	f := &WorkloadForecaster{
-		name:"test-api",
-		store:    store,
-		step:     1 * time.Minute,
-		horizon:  30 * time.Minute,
-		logger:   logger,
+		name:    "test-api",
+		store:   store,
+		step:    1 * time.Minute,
+		horizon: 30 * time.Minute,
+		logger:  logger,
 	}
 
 	forecast := models.Forecast{
@@ -303,16 +303,16 @@ func TestForecaster_Tick_WithMetrics(t *testing.T) {
 	// We can't use real Prometheus adapter in tests without a server,
 	// so this test is limited. In integration tests, we'd test with a mock adapter.
 	_ = &WorkloadForecaster{
-		name: "test",
-		builder:  builder,
-		model:    model,
-		store:    store,
-		policy:   policy,
-		step:     1 * time.Minute,
-		horizon:  30 * time.Minute,
-		window:   30 * time.Minute,
-		logger:   logger,
-		metrics:  m,
+		name:    "test",
+		builder: builder,
+		model:   model,
+		store:   store,
+		policy:  policy,
+		step:    1 * time.Minute,
+		horizon: 30 * time.Minute,
+		window:  30 * time.Minute,
+		logger:  logger,
+		metrics: m,
 	}
 
 	// Since we can't easily mock the adapter without modifying the code,
@@ -333,16 +333,16 @@ func TestForecaster_Tick_WithoutMetrics(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	f := &WorkloadForecaster{
-		name:"test",
-		builder:  builder,
-		model:    model,
-		store:    store,
-		policy:   policy,
-		step:     1 * time.Minute,
-		horizon:  30 * time.Minute,
-		window:   30 * time.Minute,
-		logger:   logger,
-		metrics:  nil, // No metrics
+		name:    "test",
+		builder: builder,
+		model:   model,
+		store:   store,
+		policy:  policy,
+		step:    1 * time.Minute,
+		horizon: 30 * time.Minute,
+		window:  30 * time.Minute,
+		logger:  logger,
+		metrics: nil, // No metrics
 	}
 
 	// Should not panic when metrics is nil

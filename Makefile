@@ -1,8 +1,13 @@
-.PHONY: all build test clean proto help forecaster scaler mcp-server
+.PHONY: all build test clean proto help forecaster scaler mcp-server generate manifests
 
 # Version can be set via environment variable or defaults to dev
 VERSION ?= dev
 LDFLAGS := -X main.version=$(VERSION)
+
+# controller-gen is used to generate deepcopy methods and CRD manifests
+CONTROLLER_GEN_VERSION ?= v0.21.0
+CONTROLLER_GEN := go run sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION)
+CRD_OUTPUT_DIR := deploy/helm/kedastral/crds
 
 # Default target
 all: build
@@ -45,6 +50,16 @@ proto:
 		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
 		externalscaler.proto
 	@echo "Protobuf code generated"
+
+# Generate deepcopy methods for API types
+generate:
+	@echo "Generating deepcopy methods..."
+	@$(CONTROLLER_GEN) object:headerFile=hack/boilerplate.go.txt paths=./pkg/api/...
+
+# Generate CRD manifests into the Helm chart
+manifests:
+	@echo "Generating CRD manifests..."
+	@$(CONTROLLER_GEN) crd:allowDangerousTypes=true paths=./pkg/api/... output:crd:dir=$(CRD_OUTPUT_DIR)
 
 # Clean build artifacts
 clean:
@@ -103,6 +118,8 @@ help:
 	@echo "  make test            - Run all tests"
 	@echo "  make test-coverage   - Run tests with coverage report"
 	@echo "  make proto           - Regenerate protobuf code"
+	@echo "  make generate        - Regenerate API deepcopy methods"
+	@echo "  make manifests       - Regenerate CRD manifests into the Helm chart"
 	@echo "  make clean           - Remove build artifacts"
 	@echo "  make install-tools   - Install development tools"
 	@echo "  make run-forecaster  - Run forecaster locally"

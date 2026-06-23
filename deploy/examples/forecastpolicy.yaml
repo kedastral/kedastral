@@ -1,0 +1,77 @@
+# ForecastPolicy describes a workload to forecast and scale predictively.
+# The operator reconciles it into an in-process forecast loop and generates a
+# KEDA ScaledObject targeting scaleTargetRef. Requires forecaster.operator.enabled
+# in the Helm chart and the DataSource referenced below.
+apiVersion: kedastral.io/v1alpha1
+kind: ForecastPolicy
+metadata:
+  name: web-api
+  namespace: default
+spec:
+  # The workload the generated ScaledObject scales.
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web-api
+
+  # Metric name (used in logs and snapshots).
+  metric: http_rps
+
+  # DataSource to collect metrics from (same namespace).
+  dataSourceRef:
+    name: prometheus
+
+  # Forecasting model: baseline, arima, sarima, or byom.
+  model:
+    type: baseline
+
+  # Forecast horizon and cadence (Go duration strings).
+  forecast:
+    horizon: 30m
+    step: 1m
+    interval: 30s
+    window: 1h
+
+  # Capacity planning policy.
+  capacity:
+    targetPerPod: 100.0
+    headroom: 1.2
+    minReplicas: 2
+    maxReplicas: 50
+    upMaxFactorPerStep: 2.0
+    downMaxPercentPerStep: 50
+
+  # How far ahead the scaler looks for proactive scale-up.
+  leadTime: 10m
+---
+# Example using the ARIMA model with explicit parameters.
+apiVersion: kedastral.io/v1alpha1
+kind: ForecastPolicy
+metadata:
+  name: data-processor
+  namespace: default
+spec:
+  scaleTargetRef:
+    name: data-processor
+  metric: processing_lag_seconds
+  dataSourceRef:
+    name: prometheus
+  model:
+    type: arima
+    arima:
+      p: 2
+      d: 1
+      q: 1
+  forecast:
+    horizon: 15m
+    step: 30s
+    interval: 15s
+    window: 30m
+  capacity:
+    targetPerPod: 60.0
+    headroom: 1.3
+    minReplicas: 3
+    maxReplicas: 100
+    upMaxFactorPerStep: 2.5
+    downMaxPercentPerStep: 40
+  leadTime: 5m

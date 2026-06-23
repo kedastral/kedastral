@@ -28,12 +28,12 @@ func TestParseQuantileLevel(t *testing.T) {
 		{"", 0, false},
 
 		// errors
-		{"p101", 0, true},   // percentile > 100
-		{"p-5", 0, true},    // negative
-		{"1.5", 0, true},    // > 1
-		{"-0.5", 0, true},   // negative
-		{"pabc", 0, true},   // invalid
-		{"invalid", 0, true},// invalid
+		{"p101", 0, true},    // percentile > 100
+		{"p-5", 0, true},     // negative
+		{"1.5", 0, true},     // > 1
+		{"-0.5", 0, true},    // negative
+		{"pabc", 0, true},    // invalid
+		{"invalid", 0, true}, // invalid
 	}
 
 	for _, tt := range tests {

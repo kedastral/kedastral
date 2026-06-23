@@ -29,16 +29,16 @@ type SARIMAModel struct {
 	p, d, q    int
 	P, D, Q, s int
 
-	mu             sync.RWMutex
-	trained        bool
-	arCoeffs       []float64
-	maCoeffs       []float64
+	mu               sync.RWMutex
+	trained          bool
+	arCoeffs         []float64
+	maCoeffs         []float64
 	seasonalARCoeffs []float64
 	seasonalMACoeffs []float64
-	mean           float64
-	lastValues     []float64
-	lastErrors     []float64
-	residualStdDev float64
+	mean             float64
+	lastValues       []float64
+	lastErrors       []float64
+	residualStdDev   float64
 }
 
 // NewSARIMAModel creates a new SARIMA model with the specified parameters.

@@ -1,0 +1,33 @@
+{{- if and .Values.forecaster.enabled .Values.forecaster.operator.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kedastral.fullname" . }}-operator
+  labels:
+    {{- include "kedastral.labels" . | nindent 4 }}
+rules:
+- apiGroups: ["kedastral.io"]
+  resources: ["forecastpolicies", "datasources"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["kedastral.io"]
+  resources: ["forecastpolicies/status", "datasources/status"]
+  verbs: ["get", "update", "patch"]
+- apiGroups: ["keda.sh"]
+  resources: ["scaledobjects"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kedastral.fullname" . }}-operator
+  labels:
+    {{- include "kedastral.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kedastral.fullname" . }}-operator
+subjects:
+- kind: ServiceAccount
+  name: {{ include "kedastral.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+{{- end }}

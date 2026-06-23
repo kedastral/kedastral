@@ -15,6 +15,7 @@
 // Single-workload mode (legacy, backward compatible):
 //
 // Using Prometheus:
+//
 //	ADAPTER_QUERY='sum(rate(http_requests_total[1m]))' \
 //	ADAPTER_URL=http://prometheus:9090 \
 //	forecaster \
@@ -25,6 +26,7 @@
 //	  -min=2 -max=50
 //
 // Using VictoriaMetrics:
+//
 //	ADAPTER_QUERY='sum(rate(http_requests_total[1m]))' \
 //	ADAPTER_URL=http://victoria-metrics:8428 \
 //	forecaster \
@@ -71,13 +73,8 @@ import (
 
 	"github.com/HatiCode/kedastral/cmd/forecaster/config"
 	"github.com/HatiCode/kedastral/cmd/forecaster/logger"
-	"github.com/HatiCode/kedastral/cmd/forecaster/metrics"
-	"github.com/HatiCode/kedastral/cmd/forecaster/models"
 	"github.com/HatiCode/kedastral/cmd/forecaster/router"
 	"github.com/HatiCode/kedastral/cmd/forecaster/store"
-	"github.com/HatiCode/kedastral/pkg/adapters"
-	"github.com/HatiCode/kedastral/pkg/capacity"
-	"github.com/HatiCode/kedastral/pkg/features"
 	"github.com/HatiCode/kedastral/pkg/httpx"
 	"github.com/HatiCode/kedastral/pkg/tls"
 )
@@ -97,15 +94,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx := context.Background()
-	workloadConfigs, err := config.LoadWorkloads(cfg)
-	if err != nil {
-		log.Error("failed to load workloads", "error", err)
-		os.Exit(1)
-	}
-
-	log.Info("loaded workloads", "count", len(workloadConfigs))
-
 	st := store.New(cfg, log)
 	if closer, ok := st.(interface{ Close() error }); ok {
 		defer func() {
@@ -115,69 +103,50 @@ func main() {
 		}()
 	}
 
-	forecasters := make([]*WorkloadForecaster, 0, len(workloadConfigs))
-	for _, wc := range workloadConfigs {
-		adapter, err := adapters.New(wc.Adapter, wc.AdapterConfig, int(wc.Step.Seconds()))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	multiForecaster := NewMultiForecaster(nil, st, log)
+	staleAfter := 2 * cfg.Interval
+
+	if cfg.Operator {
+		log.Info("starting in operator mode", "scaler_address", cfg.ScalerAddress)
+		multiForecaster.Start(ctx)
+		go func() {
+			if err := runOperator(ctx, cfg, st, multiForecaster, log); err != nil {
+				log.Error("operator failed", "error", err)
+				cancel()
+			}
+		}()
+	} else {
+		workloadConfigs, err := config.LoadWorkloads(cfg)
 		if err != nil {
-			log.Error("failed to create adapter", "workload", wc.Name, "error", err)
+			log.Error("failed to load workloads", "error", err)
 			os.Exit(1)
 		}
 
-		log.Info("configured adapter", "workload", wc.Name, "kind", wc.Adapter)
+		log.Info("loaded workloads", "count", len(workloadConfigs))
 
-		model := models.NewForWorkload(wc, log)
-
-		builder := features.NewBuilder()
-
-		quantileLevel, err := capacity.ParseQuantileLevel(wc.QuantileLevel)
-		if err != nil {
-			log.Error("invalid quantile level", "workload", wc.Name, "value", wc.QuantileLevel, "error", err)
-			os.Exit(1)
-		}
-		if quantileLevel > 0 {
-			log.Info("quantile-based capacity planning enabled",
+		for _, wc := range workloadConfigs {
+			wf, err := buildWorkloadForecaster(wc, st, log)
+			if err != nil {
+				log.Error("failed to build workload forecaster", "workload", wc.Name, "error", err)
+				os.Exit(1)
+			}
+			multiForecaster.Upsert(wf)
+			log.Info("configured workload forecaster",
 				"workload", wc.Name,
-				"quantile", capacity.FormatQuantileLevel(quantileLevel))
+				"metric", wc.Metric,
+				"model", wc.Model,
+				"horizon", wc.Horizon,
+				"interval", wc.Interval,
+			)
 		}
 
-		policy := &capacity.Policy{
-			TargetPerPod:          wc.TargetPerPod,
-			Headroom:              wc.Headroom,
-			QuantileLevel:         quantileLevel,
-			MinReplicas:           wc.MinReplicas,
-			MaxReplicas:           wc.MaxReplicas,
-			UpMaxFactorPerStep:    wc.UpMaxFactorPerStep,
-			DownMaxPercentPerStep: wc.DownMaxPercentPerStep,
-		}
-
-		wf := NewWorkloadForecaster(
-			wc.Name,
-			adapter,
-			model,
-			builder,
-			st,
-			policy,
-			wc.Horizon,
-			wc.Step,
-			wc.Window,
-			wc.Interval,
-			log,
-			metrics.New(wc.Name),
-		)
-
-		forecasters = append(forecasters, wf)
-		log.Info("configured workload forecaster",
-			"workload", wc.Name,
-			"metric", wc.Metric,
-			"model", wc.Model,
-			"horizon", wc.Horizon,
-			"interval", wc.Interval,
-		)
+		staleAfter = 2 * workloadConfigs[0].Interval
+		multiForecaster.Start(ctx)
 	}
 
-	multiForecaster := NewMultiForecaster(forecasters, st, log)
-
-	staleAfter := 2 * workloadConfigs[0].Interval
 	mux := router.SetupRoutes(st, staleAfter, log)
 	httpServer := httpx.NewServer(cfg.Listen, mux, log)
 
@@ -190,15 +159,6 @@ func main() {
 		httpServer.SetTLSConfig(tlsConfig)
 		log.Info("TLS configured", "min_version", "TLS1.3", "client_auth", "required")
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go func() {
-		if err := multiForecaster.Run(ctx); err != nil && err != context.Canceled {
-			log.Error("multi-forecaster failed", "error", err)
-		}
-	}()
 
 	serverErr := make(chan error, 1)
 	go func() {
