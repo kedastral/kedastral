@@ -1,4 +1,4 @@
-.PHONY: all build test clean proto help forecaster scaler mcp-server generate manifests
+.PHONY: all build test clean proto help forecaster scaler mcp-server backtest generate manifests
 
 # Version can be set via environment variable or defaults to dev
 VERSION ?= dev
@@ -13,7 +13,7 @@ CRD_OUTPUT_DIR := deploy/helm/kedastral/crds
 all: build
 
 # Build all executables
-build: forecaster scaler mcp-server
+build: forecaster scaler mcp-server backtest
 
 # Build forecaster
 forecaster:
@@ -29,6 +29,11 @@ scaler:
 mcp-server:
 	@echo "Building mcp-server..."
 	@go build -ldflags "$(LDFLAGS)" -o bin/mcp-server ./cmd/mcp-server
+
+# Build backtest tool
+backtest:
+	@echo "Building backtest..."
+	@go build -ldflags "$(LDFLAGS)" -o bin/backtest ./cmd/backtest
 
 # Run all tests
 test:
@@ -115,6 +120,7 @@ help:
 	@echo "  make forecaster      - Build forecaster binary only"
 	@echo "  make scaler          - Build scaler binary only"
 	@echo "  make mcp-server      - Build mcp-server binary only"
+	@echo "  make backtest        - Build backtest tool only"
 	@echo "  make test            - Run all tests"
 	@echo "  make test-coverage   - Run tests with coverage report"
 	@echo "  make proto           - Regenerate protobuf code"

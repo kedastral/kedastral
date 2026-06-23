@@ -98,11 +98,13 @@ Kedastral is **domain-agnostic** and works for any workload with predictable pat
 - **[Forecaster](cmd/forecaster/)** - Prediction engine and capacity planner
 - **[Scaler](cmd/scaler/)** - KEDA External Scaler implementation
 - **[MCP Server](cmd/mcp-server/)** - AI assistant integration via Model Context Protocol
+- **[Backtest](cmd/backtest/)** - Offline model accuracy and capacity evaluation
 
 ### Deep Dives
 - **[Forecasting Models](docs/models/)** - Baseline, ARIMA, and SARIMA models
 - **[BYOM (Bring Your Own Model)](docs/byom.md)** - Integrate custom models via HTTP
 - **[Capacity Planning](docs/planner/)** - Replica calculation and tuning
+- **[Backtesting](docs/BACKTEST.md)** - Evaluate model accuracy and capacity outcomes offline
 - **[Observability](docs/OBSERVABILITY.md)** - Metrics, monitoring, and the [Grafana dashboard](deploy/grafana/)
 - **[Security Audit](docs/SECURITY_AUDIT.md)** - Security review results
 
@@ -128,6 +130,7 @@ Kedastral is **domain-agnostic** and works for any workload with predictable pat
 | In-memory storage | ✅ |
 | Redis storage (HA) | ✅ |
 | Quantile forecasting | ✅ |
+| Backtesting harness | ✅ |
 | Multi-workload support | ✅ |
 | TLS support | ✅ |
 | Prometheus metrics | ✅ |
@@ -141,7 +144,7 @@ Kedastral is **domain-agnostic** and works for any workload with predictable pat
 **Planned next:**
 - Additional adapters (Kafka, CloudWatch, Datadog)
 - BYOM examples beyond Prophet (TensorFlow, etc.)
-- Backtesting harness for model evaluation
+- Model ensembles and automated model selection
 
 ---
 
