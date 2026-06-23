@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/HatiCode/kedastral/pkg/durationx"
 	"github.com/HatiCode/kedastral/pkg/tls"
 )
 
@@ -39,7 +40,7 @@ func ParseFlags() *Config {
 
 	flag.StringVar(&cfg.Listen, "listen", getEnv("SCALER_LISTEN", ":50051"), "gRPC listen address")
 	flag.StringVar(&cfg.ForecasterURL, "forecaster-url", getEnv("FORECASTER_URL", "http://localhost:8081"), "Forecaster HTTP endpoint")
-	flag.DurationVar(&cfg.LeadTime, "lead-time", getEnvDuration("LEAD_TIME", 5*time.Minute), "Lead time for forecast selection")
+	durationx.Var(&cfg.LeadTime, "lead-time", getEnvDuration("LEAD_TIME", 5*time.Minute), "Lead time for forecast selection")
 	flag.StringVar(&cfg.LogFormat, "log-format", getEnv("LOG_FORMAT", "text"), "Log format (text|json)")
 	flag.StringVar(&cfg.LogLevel, "log-level", getEnv("LOG_LEVEL", "info"), "Log level (debug|info|warn|error)")
 
@@ -77,7 +78,7 @@ func getEnvInt(key string, defaultValue int) int {
 
 func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 	if value := os.Getenv(key); value != "" {
-		if d, err := time.ParseDuration(value); err == nil {
+		if d, err := durationx.Parse(value); err == nil {
 			return d
 		}
 	}

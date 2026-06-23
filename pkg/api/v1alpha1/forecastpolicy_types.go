@@ -73,7 +73,8 @@ type ModelSpec struct {
 	BYOMURL string `json:"byomURL,omitempty"`
 }
 
-// ForecastSpec controls the forecast horizon and cadence. Durations use Go format (30s, 5m, 1h).
+// ForecastSpec controls the forecast horizon and cadence. Durations use Go format
+// extended with d (days) and w (weeks): e.g. 30s, 5m, 1h, 7d, 1w.
 type ForecastSpec struct {
 	// +kubebuilder:default="30m"
 	// +optional

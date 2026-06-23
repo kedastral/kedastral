@@ -33,6 +33,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/HatiCode/kedastral/pkg/durationx"
 	"github.com/HatiCode/kedastral/pkg/tls"
 )
 
@@ -127,7 +128,7 @@ func ParseFlags() *Config {
 	flag.StringVar(&cfg.RedisAddr, "redis-addr", getEnv("REDIS_ADDR", "localhost:6379"), "Redis server address")
 	flag.StringVar(&cfg.RedisPassword, "redis-password", getEnv("REDIS_PASSWORD", ""), "Redis password")
 	flag.IntVar(&cfg.RedisDB, "redis-db", getEnvInt("REDIS_DB", 0), "Redis database number")
-	flag.DurationVar(&cfg.RedisTTL, "redis-ttl", getEnvDuration("REDIS_TTL", 30*time.Minute), "Redis snapshot TTL")
+	durationx.Var(&cfg.RedisTTL, "redis-ttl", getEnvDuration("REDIS_TTL", 30*time.Minute), "Redis snapshot TTL")
 
 	flag.BoolVar(&cfg.TLS.Enabled, "tls-enabled", getEnvBool("TLS_ENABLED", false), "Enable TLS for HTTP server")
 	flag.StringVar(&cfg.TLS.CertFile, "tls-cert-file", getEnv("TLS_CERT_FILE", ""), "TLS certificate file")
@@ -140,8 +141,8 @@ func ParseFlags() *Config {
 	flag.StringVar(&cfg.Workload, "workload", getEnv("WORKLOAD", ""), "Workload name (required in single-workload mode)")
 	flag.StringVar(&cfg.Metric, "metric", getEnv("METRIC", ""), "Metric name (required in single-workload mode)")
 	flag.StringVar(&cfg.Adapter, "adapter", getEnv("ADAPTER", ""), "Adapter type: prometheus, victoriametrics, or http")
-	flag.DurationVar(&cfg.Horizon, "horizon", getEnvDuration("HORIZON", 30*time.Minute), "Forecast horizon")
-	flag.DurationVar(&cfg.Step, "step", getEnvDuration("STEP", 1*time.Minute), "Forecast step size")
+	durationx.Var(&cfg.Horizon, "horizon", getEnvDuration("HORIZON", 30*time.Minute), "Forecast horizon")
+	durationx.Var(&cfg.Step, "step", getEnvDuration("STEP", 1*time.Minute), "Forecast step size")
 	flag.Float64Var(&cfg.TargetPerPod, "target-per-pod", getEnvFloat("TARGET_PER_POD", 100.0), "Target metric value per pod")
 	flag.Float64Var(&cfg.Headroom, "headroom", getEnvFloat("HEADROOM", 1.2), "Headroom multiplier (fallback when quantiles unavailable)")
 	flag.StringVar(&cfg.QuantileLevel, "quantile-level", getEnv("QUANTILE_LEVEL", "0"), "Quantile level for capacity planning (p90, p95, or 0.90, 0.95). Set to 0 to disable and use headroom.")
@@ -149,8 +150,8 @@ func ParseFlags() *Config {
 	flag.IntVar(&cfg.MaxReplicas, "max", getEnvInt("MAX_REPLICAS", 100), "Maximum replicas")
 	flag.Float64Var(&cfg.UpMaxFactorPerStep, "up-max-factor", getEnvFloat("UP_MAX_FACTOR", 2.0), "Max scale-up factor per step")
 	flag.IntVar(&cfg.DownMaxPercentPerStep, "down-max-percent", getEnvInt("DOWN_MAX_PERCENT", 50), "Max scale-down percent per step")
-	flag.DurationVar(&cfg.Interval, "interval", getEnvDuration("INTERVAL", 30*time.Second), "Forecast interval")
-	flag.DurationVar(&cfg.Window, "window", getEnvDuration("WINDOW", 30*time.Minute), "Historical window")
+	durationx.Var(&cfg.Interval, "interval", getEnvDuration("INTERVAL", 30*time.Second), "Forecast interval")
+	durationx.Var(&cfg.Window, "window", getEnvDuration("WINDOW", 30*time.Minute), "Historical window")
 	flag.StringVar(&cfg.Model, "model", getEnv("MODEL", "baseline"), "Forecasting model: baseline, arima, sarima, or byom")
 	flag.IntVar(&cfg.ARIMA_P, "arima-p", getEnvInt("ARIMA_P", 0), "ARIMA AR order (0=auto, default 1)")
 	flag.IntVar(&cfg.ARIMA_D, "arima-d", getEnvInt("ARIMA_D", 0), "ARIMA differencing order (0=auto, default 1)")
@@ -283,7 +284,7 @@ func getEnvFloat(key string, defaultValue float64) float64 {
 
 func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 	if value := os.Getenv(key); value != "" {
-		if d, err := time.ParseDuration(value); err == nil {
+		if d, err := durationx.Parse(value); err == nil {
 			return d
 		}
 	}

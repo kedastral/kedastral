@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/HatiCode/kedastral/pkg/durationx"
 )
 
 // Config holds all runtime configuration for the MCP server.
@@ -25,7 +27,7 @@ func ParseFlags() *Config {
 	cfg := &Config{}
 
 	flag.StringVar(&cfg.ForecasterURL, "forecaster-url", getEnv("FORECASTER_URL", "http://localhost:8081"), "Forecaster HTTP endpoint")
-	flag.DurationVar(&cfg.StaleAfter, "stale-after", getEnvDuration("STALE_AFTER", 5*time.Minute), "Age threshold beyond which a snapshot is considered stale")
+	durationx.Var(&cfg.StaleAfter, "stale-after", getEnvDuration("STALE_AFTER", 5*time.Minute), "Age threshold beyond which a snapshot is considered stale")
 	flag.StringVar(&cfg.Transport, "transport", getEnv("MCP_TRANSPORT", "stdio"), "Transport mode: stdio or sse")
 	flag.StringVar(&cfg.Listen, "listen", getEnv("MCP_LISTEN", ":8083"), "Listen address for SSE transport")
 	flag.StringVar(&cfg.BaseURL, "base-url", getEnv("MCP_BASE_URL", ""), "Public base URL for SSE transport (e.g. http://kedastral-mcp:8083)")
@@ -58,7 +60,7 @@ func getEnv(key, defaultValue string) string {
 
 func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 	if value := os.Getenv(key); value != "" {
-		if d, err := time.ParseDuration(value); err == nil {
+		if d, err := durationx.Parse(value); err == nil {
 			return d
 		}
 	}

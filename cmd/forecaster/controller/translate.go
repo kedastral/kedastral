@@ -5,6 +5,7 @@ import (
 
 	"github.com/HatiCode/kedastral/cmd/forecaster/config"
 	kedastralv1alpha1 "github.com/HatiCode/kedastral/pkg/api/v1alpha1"
+	"github.com/HatiCode/kedastral/pkg/durationx"
 )
 
 // workloadKey derives the store/forecaster key for a ForecastPolicy. It includes the
@@ -20,7 +21,7 @@ func parseDurationOr(value string, fallback time.Duration) (time.Duration, error
 	if value == "" {
 		return fallback, nil
 	}
-	return time.ParseDuration(value)
+	return durationx.Parse(value)
 }
 
 // toWorkloadConfig translates a ForecastPolicy and its referenced DataSource into the
