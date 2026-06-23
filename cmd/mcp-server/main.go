@@ -1,9 +1,14 @@
 // Command mcp-server exposes Kedastral forecast data as MCP tools for AI assistants.
 //
-// It connects to the forecaster HTTP API and serves three tools:
+// It connects to the forecaster HTTP API and serves these tools:
 //   - list_workloads: list all tracked workloads
 //   - get_forecast: retrieve the full forecast snapshot for a workload
 //   - explain_decision: human-readable explanation of the current scaling decision
+//
+// When the server has Kubernetes access (in-cluster or via kubeconfig), two
+// operator-aware tools are also registered:
+//   - list_forecast_policies: list ForecastPolicy resources and their status
+//   - get_forecast_policy: full configuration and status for one ForecastPolicy
 //
 // Two transport modes are supported:
 //   - stdio (default): spawned as a subprocess by local AI clients (e.g. Claude Desktop)
@@ -50,7 +55,18 @@ func main() {
 	)
 
 	forecasterClient := client.NewForecasterClient(cfg.ForecasterURL)
-	s := buildMCPServer(forecasterClient, cfg.StaleAfter, version, log)
+
+	// Operator-aware tools are enabled only when the MCP server has Kubernetes access
+	// (in-cluster or via kubeconfig). Without it, the forecaster-only tools still work.
+	policyReader, err := newPolicyReader()
+	if err != nil {
+		log.Info("operator tools disabled: no kubernetes access", "error", err)
+		policyReader = nil
+	} else {
+		log.Info("operator tools enabled (list_forecast_policies, get_forecast_policy)")
+	}
+
+	s := buildMCPServer(forecasterClient, policyReader, cfg.StaleAfter, version, log)
 
 	switch cfg.Transport {
 	case "sse":

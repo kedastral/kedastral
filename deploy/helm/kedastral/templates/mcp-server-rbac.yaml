@@ -1,0 +1,29 @@
+{{- if .Values.mcpServer.enabled }}
+# Read-only access so the MCP server's operator-aware tools (list_forecast_policies,
+# get_forecast_policy) can inspect ForecastPolicy/DataSource resources and their status.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kedastral.fullname" . }}-mcp-reader
+  labels:
+    {{- include "kedastral.labels" . | nindent 4 }}
+rules:
+- apiGroups: ["kedastral.io"]
+  resources: ["forecastpolicies", "datasources"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kedastral.fullname" . }}-mcp-reader
+  labels:
+    {{- include "kedastral.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kedastral.fullname" . }}-mcp-reader
+subjects:
+- kind: ServiceAccount
+  name: {{ include "kedastral.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+{{- end }}

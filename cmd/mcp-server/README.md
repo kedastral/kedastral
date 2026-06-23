@@ -10,6 +10,20 @@ The MCP server exposes Kedastral forecast data as [Model Context Protocol](https
 | `get_forecast` | Get the full forecast snapshot for a workload (metric values, desired replicas, freshness) |
 | `explain_decision` | Human-readable explanation of the current scaling decision (trend, peak, staleness warning) |
 
+### Operator-aware tools
+
+When the server has Kubernetes access (in-cluster, or a kubeconfig for local use), it
+also registers tools that read [operator](../../docs/OPERATOR.md) resources. These are
+skipped automatically when no cluster is reachable.
+
+| Tool | Description |
+|------|-------------|
+| `list_forecast_policies` | List `ForecastPolicy` resources with target, model, readiness, and current/desired replicas |
+| `get_forecast_policy` | Full spec and status for one `ForecastPolicy`, including readiness conditions and the generated `ScaledObject` |
+
+In-cluster, the Helm chart grants the MCP server read-only RBAC on
+`forecastpolicies`/`datasources` when `mcpServer.enabled` is set.
+
 ## Transport modes
 
 The server supports two transports selectable via `--transport`:

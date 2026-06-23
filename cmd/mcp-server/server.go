@@ -15,7 +15,7 @@ import (
 	"github.com/HatiCode/kedastral/pkg/client"
 )
 
-func buildMCPServer(forecasterClient *client.ForecasterClient, staleAfter time.Duration, version string, log *slog.Logger) *server.MCPServer {
+func buildMCPServer(forecasterClient *client.ForecasterClient, policyReader PolicyReader, staleAfter time.Duration, version string, log *slog.Logger) *server.MCPServer {
 	s := server.NewMCPServer(
 		"kedastral",
 		version,
@@ -50,6 +50,10 @@ func buildMCPServer(forecasterClient *client.ForecasterClient, staleAfter time.D
 		),
 		handleExplainDecision(forecasterClient, staleAfter, log),
 	)
+
+	if policyReader != nil {
+		registerPolicyTools(s, policyReader, log)
+	}
 
 	return s
 }
