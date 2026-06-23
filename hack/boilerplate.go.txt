@@ -1,2 +1,2 @@
-// Copyright (c) 2026 Alexandre Steppé.
+// Copyright (c) 2026 The Kedastral Authors.
 // SPDX-License-Identifier: MIT
