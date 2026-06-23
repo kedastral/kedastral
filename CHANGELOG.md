@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Grafana dashboard** (`deploy/grafana/`): workload-templated dashboard built from the `kedastral_*` metrics.
 - **kind operator demo** (`examples/kind-operator/`): one-command end-to-end demo of predictive scaling via the operator.
 - **CONTRIBUTING.md** with build, test, and codegen guidance.
+- **MCP server release artifacts**: the MCP server is now published as a multi-arch container image (`ghcr.io/<owner>/kedastral/mcp-server`) and included in the release binary archives.
 
 ### Changed
 
@@ -27,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Corrected the project license references to MIT to match the `LICENSE` file.
+- Built container images on Go 1.26 (`Dockerfile.forecaster`, `Dockerfile.scaler`) to match `go.mod`, fixing the integration test (`go mod download` failure) that broke the release build.
 
 ## [0.1.6] - 2026-05-11
 

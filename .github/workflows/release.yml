@@ -75,12 +75,22 @@ jobs:
           make scaler
           mv bin/scaler dist/scaler-${{ matrix.goos }}-${{ matrix.goarch }}
 
+      - name: Build mcp-server
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          make mcp-server
+          mv bin/mcp-server dist/mcp-server-${{ matrix.goos }}-${{ matrix.goarch }}
+
       - name: Create archives
         run: |
           cd dist
           tar -czf kedastral-${{ steps.version.outputs.VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz \
             forecaster-${{ matrix.goos }}-${{ matrix.goarch }} \
-            scaler-${{ matrix.goos }}-${{ matrix.goarch }}
+            scaler-${{ matrix.goos }}-${{ matrix.goarch }} \
+            mcp-server-${{ matrix.goos }}-${{ matrix.goarch }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -153,6 +163,29 @@ jobs:
           push: true
           tags: ${{ steps.meta-scaler.outputs.tags }}
           labels: ${{ steps.meta-scaler.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract metadata for mcp-server
+        id: meta-mcp-server
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/mcp-server
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
+
+      - name: Build and push mcp-server image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.mcp-server
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-mcp-server.outputs.tags }}
+          labels: ${{ steps.meta-mcp-server.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -243,6 +276,7 @@ jobs:
           ```bash
           docker pull ghcr.io/${{ github.repository }}/forecaster:${{ steps.version.outputs.VERSION }}
           docker pull ghcr.io/${{ github.repository }}/scaler:${{ steps.version.outputs.VERSION }}
+          docker pull ghcr.io/${{ github.repository }}/mcp-server:${{ steps.version.outputs.VERSION }}
           ```
 
           ### Pre-built binaries
@@ -313,9 +347,9 @@ jobs:
           - Scaler implementing the KEDA External Scaler protocol
           - Forecasting models: baseline, ARIMA, SARIMA, and BYOM
           - Prometheus, VictoriaMetrics, and generic HTTP adapters
-          - MCP server for AI-assistant integration (Helm/source)
+          - MCP server for AI-assistant integration
           - Backtest tool for offline model evaluation (source)
-          - Multi-arch Docker images for the forecaster and scaler (amd64, arm64) and a production Helm chart
+          - Multi-arch Docker images for the forecaster, scaler, and mcp-server (amd64, arm64) and a production Helm chart
           EOF
           cat release-notes.md
 
